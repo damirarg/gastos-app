@@ -406,10 +406,11 @@
             boton.classList.add('activo');
         };
 
+        // DICCIONARIO DE CATEGORÍAS (CON FARMACIA AGREGADA)
         const categoriasPorTipo = {
             proporcional: ['🏠 Alquiler'],
-            comun: ['🛒 Supermercado', '💡 Luz', '🔥 Gas', '🌐 Internet', '💧 Agua', '🏠 Seguro Casa', '🧹 Servicio Doméstico', '🏊‍♂️ Servicio Pileta', '🧪 Insumos Pileta', '🐈 Mascotas', '🛠️ Reparaciones Casa', '🍷 Salidas/Ocio'],
-            privado: ['⚕️ Obra Social', '🍷 Salidas/Ocio', '👕 Vestimenta', '✂️ Peluquería', '⛽ Combustible', '🚗 Seguro Auto', '🔧 Service Auto', '📄 Patente', '🛍️ Varios']
+            comun: ['🛒 Supermercado', '💊 Farmacia', '💡 Luz', '🔥 Gas', '🌐 Internet', '💧 Agua', '🏠 Seguro Casa', '🧹 Servicio Doméstico', '🏊‍♂️ Servicio Pileta', '🧪 Insumos Pileta', '🐈 Mascotas', '🛠️ Reparaciones Casa', '🍷 Salidas/Ocio'],
+            privado: ['⚕️ Obra Social', '💊 Farmacia', '🍷 Salidas/Ocio', '👕 Vestimenta', '✂️ Peluquería', '⛽ Combustible', '🚗 Seguro Auto', '🔧 Service Auto', '📄 Patente', '🛍️ Varios']
         };
 
         function inicializarSelectoresFiltro() {
@@ -657,11 +658,9 @@
             const sD = parseInt(document.getElementById('sueldo-damian').value.replace(/\D/g, '') || 0);
             const sM = parseInt(document.getElementById('sueldo-maxi').value.replace(/\D/g, '') || 0);
             try {
-                const btn = document.getElementById('btn-guardar-ingresos');
-                btn.textContent = "Guardando..."; btn.disabled = true;
+                const btn = document.getElementById('btn-guardar-ingresos'); btn.textContent = "Guardando..."; btn.disabled = true;
                 await setDoc(doc(db, "ingresos", mes), { sueldoDamian: sD, sueldoMaxi: sM }, { merge: true });
-                btn.textContent = "✓ Guardado"; 
-                setTimeout(() => { btn.textContent = "💾 Guardar Ingresos"; btn.disabled = false; }, 2000);
+                btn.textContent = "✓ Guardado"; setTimeout(() => { btn.textContent = "💾 Guardar Ingresos"; btn.disabled = false; }, 2000);
             } catch (error) { alert("Error al guardar ingresos."); }
         });
 
@@ -669,18 +668,12 @@
             const mes = filtroMesInput.value;
             const saldoLimpio = parseInt(document.getElementById('saldo-anterior').value.replace(/\D/g, '') || 0, 10);
             const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
-            
-            const btn = document.getElementById('btn-guardar-saldo');
-            btn.textContent = "⏳"; btn.disabled = true;
+            const btn = document.getElementById('btn-guardar-saldo'); btn.textContent = "⏳"; btn.disabled = true;
 
             try {
-                if (esDamian) {
-                    await setDoc(doc(db, "ingresos", mes), { saldoDamian: saldoLimpio }, { merge: true });
-                } else {
-                    await setDoc(doc(db, "ingresos", mes), { saldoMaxi: saldoLimpio }, { merge: true });
-                }
-                btn.textContent = "✓"; 
-                setTimeout(() => { btn.textContent = "💾"; btn.disabled = false; }, 2000);
+                if (esDamian) { await setDoc(doc(db, "ingresos", mes), { saldoDamian: saldoLimpio }, { merge: true }); } 
+                else { await setDoc(doc(db, "ingresos", mes), { saldoMaxi: saldoLimpio }, { merge: true }); }
+                btn.textContent = "✓"; setTimeout(() => { btn.textContent = "💾"; btn.disabled = false; }, 2000);
             } catch (error) { alert("Error al guardar saldo."); btn.textContent = "💾"; btn.disabled = false; }
         });
 
@@ -751,12 +744,8 @@
                             nombreMedioVisual = tObj ? `💳 ${tObj.marca} (${tObj.tipo === 'extension' ? 'Ext' : 'Propia'})` : '💳 Tarjeta';
                         }
 
-                        // DOM para los botones de edición
                         const botonEditarConcepto = `<button class="btn-editar-icono" title="Editar Concepto" onclick="editarConcepto('${gasto.id}')">✏️</button>`;
                         const botonEditarFecha = `<button class="btn-editar-icono" title="Editar Fecha" onclick="editarFecha('${gasto.id}')">✏️</button>`;
-
-                        // CONDICIÓN PARA NO SUMAR GASTOS PERSONALES FÍSICOS AL RESUMEN COMÚN
-                        // Este código se corrigió en el bloque de recalculado de balance.
 
                         if (gasto.tipoReparto === 'comun' || gasto.tipoReparto === 'proporcional' || gasto.tipoReparto === 'devolucion') {
                             contadorComunes++;
@@ -986,7 +975,6 @@
                 } else if (reparto === 'proporcional') {
                     if (pagadorFinanciero === 'Damian') { balanceNetoDamian += (monto * pctMaxi); totalPagadoDamian += monto; } else { balanceNetoDamian -= (monto * pctDamian); totalPagadoMaxi += monto; }
                 } else if (reparto === 'privado') {
-                    // SOLO IMPACTA EN EL DASHBOARD COMÚN SI HAY DEUDA CRUZADA (usa la tarjeta del otro)
                     if (consumidor === 'Damian' && pagadorFinanciero === 'Maxi') { balanceNetoDamian -= monto; totalPagadoMaxi += monto; } 
                     else if (consumidor === 'Maxi' && pagadorFinanciero === 'Damian') { balanceNetoDamian += monto; totalPagadoDamian += monto; } 
                 } else if (reparto === 'devolucion') {
