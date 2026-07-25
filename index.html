@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Gastos del Hogar 🏠</title>
+    <!-- Librerías -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        :root {
+            --bg-color: #f5f5f7; --card-bg: #ffffff; --text-primary: #1d1d1f; 
+            --text-secondary: #86868b; --accent-color: #0071e3; --accent-hover: #0077ed; 
+            --border-color: #d2d2d7; --success-color: #34c759; --danger-color: #ff3b30; 
+            --radius: 18px; --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-primary); padding: 40px 20px; display: flex; justify-content: center; min-height: 100vh; }
+        .container { max-width: 950px; width: 100%; }
+        .oculto { display: none !important; }
+        @keyframes flotar { 0% { transform: translateY(0px); } 50% { transform: translateY(-6px); } 100% { transform: translateY(0px); } }
+        .emoji-animado { display: inline-block; animation: flotar 3s ease-in-out infinite; transition: transform 0.3s ease; cursor: pointer; }
+        .emoji-animado:hover { transform: scale(1.25) rotate(5deg); }
+        .delay-1 { animation-delay: 0s; } .delay-2 { animation-delay: 0.4s; } .delay-3 { animation-delay: 0.8s; }
+
+        /* LOGIN */
+        #pantalla-login-wrapper { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; background-image: url('assets/foto_maxi_dami.jpg'); background-size: cover; background-position: center; z-index: 1000; }
+        #pantalla-login-wrapper::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(4px); z-index: 1; }
+        .login-card { position: relative; z-index: 2; width: 100%; max-width: 400px; background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); border-radius: 24px; padding: 36px 28px; text-align: center; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.4); }
+        .login-hero { font-size: 44px; margin-bottom: 12px; } .login-card h2 { font-size: 24px; font-weight: 600; margin-bottom: 6px; } .login-subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 24px; }
+
+        /* ENCABEZADO Y TABS */
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: var(--card-bg); padding: 20px 28px; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid rgba(0, 0, 0, 0.04); }
+        .header-title { display: flex; align-items: center; gap: 12px; } .header-title h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; } .header-emojis { font-size: 24px; }
+        .user-selector { background: #f0f0f2; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 12px; }
+        .btn-logout { background: none; border: none; color: var(--danger-color); font-size: 13px; font-weight: 600; cursor: pointer; padding: 0; width: auto; }
+        .nav-acciones { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 20px; }
+        .btn-tab { background: var(--card-bg); border: 1px solid var(--border-color); padding: 12px 18px; border-radius: 14px; font-size: 14px; font-weight: 500; color: var(--text-primary); cursor: pointer; white-space: nowrap; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.02); width: auto; }
+        .btn-tab:hover { background: #f0f0f2; } .btn-tab.activo { background: var(--accent-color); color: white; border-color: var(--accent-color); box-shadow: 0 4px 14px rgba(0, 113, 227, 0.3); }
+
+        /* TARJETAS DE CONTENIDO Y FORMS */
+        .card { background: var(--card-bg); border-radius: var(--radius); padding: 28px; margin-bottom: 24px; box-shadow: var(--shadow); border: 1px solid rgba(0, 0, 0, 0.04); }
+        .card-privada { border: 1px solid #cce5ff; background: #f8fbff; } .card-importador { border: 1px solid #d1e7dd; background: #f4faf6; }
+        .card h2 { font-size: 19px; font-weight: 600; margin-bottom: 20px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 8px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; } .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
+        .form-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; text-align: left; }
+        label { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+        input, select { padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border-color); font-size: 15px; background-color: #fafafa; transition: all 0.2s ease; outline: none; }
+        input:focus, select:focus { border-color: var(--accent-color); background-color: #fff; box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15); }
+        button { background-color: var(--accent-color); color: white; border: none; padding: 14px 20px; border-radius: 12px; font-size: 15px; font-weight: 500; cursor: pointer; transition: background-color 0.2s ease; width: 100%; }
+        button:hover { background-color: var(--accent-hover); } .btn-secundario { background-color: #e5e5ea; color: var(--text-primary); } .btn-secundario:hover { background-color: #d1d1d6; }
+        .btn-accion-rapida { padding: 6px 12px; font-size: 12px; border-radius: 8px; width: auto; }
+        .btn-editar-icono { background: none; border: none; cursor: pointer; font-size: 14px; margin-left: 6px; opacity: 0.5; transition: opacity 0.2s; padding: 0; width: auto; display: inline-block; color: inherit; }
+        .btn-editar-icono:hover { opacity: 1; transform: scale(1.1); }
+
+        /* FILTROS DE TABLA */
+        .filtros-tabla { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; background: #fafafa; padding: 12px; border-radius: 12px; border: 1px solid var(--border-color); }
+        .filtro-input { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 13px; flex: 1; min-width: 150px; outline: none; background-color: #fff; }
+        .filtro-input:focus { border-color: var(--accent-color); }
+
+        /* TABLAS Y MÉTRICAS */
+        .balance-box { background-color: #f0f8ff; border-radius: 14px; padding: 20px; border: 1px solid #b8e1ff; margin-top: 12px; position: relative; }
+        .balance-text { font-size: 18px; font-weight: 600; color: #004085; margin-bottom: 8px; } .balance-subtext { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; }
+        .tabla-wrapper { overflow-x: auto; margin-top: 10px; } table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; } th { background-color: #fafafa; color: var(--text-secondary); font-weight: 600; padding: 12px 14px; border-bottom: 1px solid var(--border-color); } td { padding: 10px 12px; border-bottom: 1px solid #f0f0f2; vertical-align: middle; } tr:hover td { background-color: #fcfcfd; }
+        .badge-pagado { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background-color: #e3f2fd; color: #0d47a1; }
+        .btn-eliminar { background: none; border: none; color: var(--danger-color); cursor: pointer; font-size: 16px; padding: 4px 8px; border-radius: 6px; }
+        .info-proporcion { font-size: 14px; font-weight: 500; color: var(--accent-color); margin-top: 10px; background-color: #eef7ff; padding: 10px 14px; border-radius: 10px; display: inline-block; }
+        .tarjeta-item { background: #fff; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        select.mini-select { padding: 6px 10px; font-size: 12px; border-radius: 8px; width: 100%; max-width: 150px; }
+        .metric-card { background: #fafafa; border-radius: 14px; padding: 16px 20px; border: 1px solid var(--border-color); text-align: center; } .metric-val { font-size: 22px; font-weight: 700; color: var(--text-primary); margin-top: 4px; }
+        .chart-container { position: relative; max-height: 260px; margin-top: 16px; }
+
+        @media (max-width: 768px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } header { flex-direction: column; gap: 12px; text-align: center; } }
+    </style>
+</head>
+<body>
+
+    <!-- PANTALLA DE LOGIN -->
+    <div id="pantalla-login-wrapper">
+        <section id="seccion-login" class="login-card">
+            <div class="login-hero"><span class="emoji-animado delay-1">🏠</span><span class="emoji-animado delay-2">🚗</span><span class="emoji-animado delay-3">🐈‍⬛</span></div>
+            <h2>Nuestra Economía</h2>
+            <p class="login-subtitle">Ingresá para gestionar los gastos del hogar</p>
+            <form id="form-login">
+                <div class="form-group"><label>Correo Electrónico</label><input type="email" id="login-email" required></div>
+                <div class="form-group"><label>Contraseña</label><input type="password" id="login-password" required></div>
+                <button type="submit">Ingresar a la App</button>
+            </form>
+        </section>
+    </div>
+
+    <!-- PANEL PRINCIPAL -->
+    <div class="container">
+        <main id="seccion-app" class="oculto">
+            <header>
+                <div class="header-title"><h1>Gastos del Hogar</h1><span class="header-emojis">🏠🚗🐈‍⬛</span></div>
+                <div class="user-selector"><span>👤 <strong id="usuario-activo-email">Cargando...</strong></span><button class="btn-logout" id="btn-logout">Salir</button></div>
+            </header>
+
+            <!-- NAV TABS -->
+            <nav class="nav-acciones">
+                <button class="btn-tab activo" onclick="cambiarVista('vista-dashboard', this)">📊 Dashboard Común</button>
+                <button class="btn-tab" onclick="cambiarVista('vista-importador', this)">📄 Importar Planilla</button>
+                <button class="btn-tab" onclick="cambiarVista('vista-manual', this)">📝 Carga Manual</button>
+                <button class="btn-tab" onclick="cambiarVista('vista-privada', this)">🔒 Finanzas Privadas</button>
+                <button class="btn-tab" onclick="cambiarVista('vista-tarjetas', this)">💳 Medios de Pago</button>
+            </nav>
+
+            <!-- FILTRO DE PERÍODO -->
+            <section class="card" style="padding: 16px 24px; margin-bottom: 20px;">
+                <div class="grid-2" style="align-items: center;">
+                    <div><label for="filtro-mes">📅 Período en pantalla:</label><input type="month" id="filtro-mes" style="margin-top: 4px;"></div>
+                    <div style="text-align: right;"><span style="font-size: 13px; color: var(--text-secondary);">🟢 Sincronizado en tiempo real</span></div>
+                </div>
+            </section>
+
+            <!-- VISTA 1: DASHBOARD COMÚN -->
+            <div id="vista-dashboard" class="modulo-vista">
+                <div class="grid-3" style="margin-bottom: 24px;">
+                    <div class="metric-card"><label>Gasto Común del Mes</label><div class="metric-val" id="metric-total-mes">$0</div></div>
+                    <div class="metric-card"><label>Promedio por Categoría Común</label><div class="metric-val" id="metric-promedio">$0</div></div>
+                    <div class="metric-card"><label>Estado de Deuda Neteada</label><div class="metric-val" id="metric-estado" style="font-size: 16px; color: var(--accent-color);">Al día</div></div>
+                </div>
+                <div class="grid-2">
+                    <section class="card"><h2>Gastos Comunes por Categoría 🛒</h2><div class="chart-container"><canvas id="chart-categorias"></canvas></div></section>
+                    <section class="card"><h2>Consumos Comunes por Integrante ⚖️</h2><div class="chart-container"><canvas id="chart-aportes"></canvas></div></section>
+                </div>
+
+                <section class="card">
+                    <h2>Balance y Cuenta Neteada del Mes ⚖️</h2>
+                    <div class="balance-box">
+                        <p class="balance-text" id="resultado-balance">Calculando balance del mes...</p>
+                        <p class="balance-subtext" id="detalle-saldos">Paga al banco/resumen compartido: Damián $0 | Maxi $0</p>
+                        <div style="margin-top: 16px;">
+                            <button id="btn-abrir-saldar" class="btn-secundario oculto" style="width: auto; padding: 8px 16px; font-size: 13px;">Saldar Deuda 🤝</button>
+                        </div>
+                    </div>
+
+                    <div id="contenedor-saldar-deuda" class="oculto" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                        <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--accent-color);">Registrar Pago de Deuda</h3>
+                        <form id="form-saldar-deuda">
+                            <div class="grid-3">
+                                <div class="form-group"><label>Fecha del Pago</label><input type="date" id="saldar-fecha" required></div>
+                                <div class="form-group"><label>Monto a Saldar ($)</label><input type="text" id="saldar-monto" class="monto-input" required></div>
+                                <div class="form-group"><label>Medio de Pago</label><select id="saldar-medio"><option value="transferencia">🏦 Transferencia</option><option value="efectivo">💵 Efectivo</option></select></div>
+                            </div>
+                            <div style="text-align: right;">
+                                <button type="button" class="btn-secundario" style="width: auto;" onclick="document.getElementById('contenedor-saldar-deuda').classList.add('oculto');">Cancelar</button>
+                                <button type="submit" style="background-color: var(--success-color); width: auto; margin-left: 8px;">Confirmar Liquidación ✔️</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <h2>Historial de Gastos Comunes 📋</h2>
+                    
+                    <div class="filtros-tabla">
+                        <input type="text" id="search-comun" class="filtro-input" placeholder="🔍 Buscar por concepto..." onkeyup="filtrarTabla('tabla-gastos-body', 'search-comun', 'cat-comun', 'medio-comun')">
+                        <select id="cat-comun" class="filtro-input" onchange="filtrarTabla('tabla-gastos-body', 'search-comun', 'cat-comun', 'medio-comun')">
+                            <option value="">Todas las categorías</option>
+                        </select>
+                        <select id="medio-comun" class="filtro-input" onchange="filtrarTabla('tabla-gastos-body', 'search-comun', 'cat-comun', 'medio-comun')">
+                            <option value="">Todos los medios de pago</option>
+                        </select>
+                    </div>
+
+                    <div class="tabla-wrapper">
+                        <table id="tabla-gastos-comunes">
+                            <thead><tr><th>Fecha</th><th>Concepto</th><th>Consumió</th><th>Tarjeta / Medio</th><th>Reparto</th><th>Monto</th><th>Acción</th></tr></thead>
+                            <tbody id="tabla-gastos-body"><tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">Cargando gastos comunes...</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
+            <!-- VISTA 2: IMPORTADOR CSV/EXCEL -->
+            <div id="vista-importador" class="modulo-vista oculto">
+                <section class="card card-importador">
+                    <h2>📊 Importar Planilla de Consumos (.CSV o .XLSX)</h2>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Subí un archivo exportado de tu Homebanking o Mercado Pago.</p>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>¿Origen del archivo? (Tarjeta / Cuenta)</label>
+                            <select id="archivo-medio-select">
+                                <option value="efectivo">💵 Efectivo / Ninguna</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>Seleccionar Archivo (.csv, .xlsx)</label><input type="file" id="archivo-input" accept=".csv, .xlsx, .xls"></div>
+                    </div>
+                    <button type="button" id="btn-procesar-archivo">Cargar Planilla Borrador ⚡</button>
+                    <div id="contenedor-previa-ia" class="oculto" style="margin-top: 24px;">
+                        <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--accent-color);">📋 Planilla Borrador - Seleccioná y confirmá cada consumo:</h3>
+                        <div class="tabla-wrapper">
+                            <table>
+                                <thead><tr><th>Fecha</th><th>Detalle / Comercio</th><th>Monto ($)</th><th>Tipo Gasto</th><th>Categoría</th><th>Consumió</th><th>Medio de Pago</th><th>Confirmar</th></tr></thead>
+                                <tbody id="tabla-previa-ia-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- VISTA 3: CARGA MANUAL -->
+            <div id="vista-manual" class="modulo-vista oculto">
+                <section class="card">
+                    <h2>Registrar Nuevo Gasto Manual 📝</h2>
+                    <form id="form-gasto">
+                        <div class="grid-3">
+                            <div class="form-group">
+                                <label for="tipo-reparto">1. Tipo de Gasto</label>
+                                <select id="tipo-reparto">
+                                    <option value="proporcional">🏠 Alquiler (% de ingresos)</option>
+                                    <option value="comun" selected>🤝 Gasto Común (50 / 50)</option>
+                                    <option value="privado">👤 Gasto Personal (100% propio)</option>
+                                </select>
+                            </div>
+                            <div class="form-group"><label for="categoria">2. Categoría</label><select id="categoria"></select></div>
+                            <div class="form-group"><label for="fecha-manual">3. Fecha del Gasto</label><input type="date" id="fecha-manual" required></div>
+                        </div>
+
+                        <div class="grid-2">
+                            <div class="form-group"><label for="concepto">Concepto / Detalle</label><input type="text" id="concepto" placeholder="Ej: Compra Supermercado" required></div>
+                            <div class="form-group"><label for="monto">Monto ($)</label><input type="text" id="monto" class="monto-input" placeholder="Ej: 45.000" inputmode="numeric" required></div>
+                        </div>
+
+                        <div class="grid-3">
+                            <div class="form-group"><label for="pagado-por">¿Quién hizo el gasto?</label><select id="pagado-por"><option value="Damian">Damián</option><option value="Maxi">Maxi</option></select></div>
+                            <div class="form-group"><label for="formato-pago">Formato de Pago</label><select id="formato-pago"><option value="efectivo">💵 Efectivo</option><option value="tarjeta">💳 Tarjeta de Crédito</option><option value="transferencia">🏦 Transferencia / Billetera</option></select></div>
+                            <div class="form-group" id="contenedor-tarjeta" style="display: none;"><label for="gasto-tarjeta-asociada">Seleccionar Tarjeta</label><select id="gasto-tarjeta-asociada"></select></div>
+                            <div class="form-group" id="contenedor-cuenta" style="display: none;"><label for="gasto-cuenta-asociada">Seleccionar Cuenta</label><select id="gasto-cuenta-asociada"></select></div>
+                        </div>
+                        <button type="submit" id="btn-guardar" style="margin-top:10px;">Cargar Gasto 🚀</button>
+                    </form>
+                </section>
+            </div>
+
+            <!-- VISTA 4: FINANZAS PRIVADAS -->
+            <div id="vista-privada" class="modulo-vista oculto">
+                <section class="card">
+                    <h2>Ingresos Mensuales del Hogar 💵</h2>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Actualizá los sueldos del mes y tocala "Guardar".</p>
+                    <div class="grid-2">
+                        <div class="form-group"><label for="sueldo-damian">Sueldo Damián ($)</label><input type="text" id="sueldo-damian" class="monto-input" placeholder="Ej: 800.000" inputmode="numeric"></div>
+                        <div class="form-group"><label for="sueldo-maxi">Sueldo Maxi ($)</label><input type="text" id="sueldo-maxi" class="monto-input" placeholder="Ej: 600.000" inputmode="numeric"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                        <p id="proporcion-info" class="info-proporcion" style="margin-top:0;">📊 Proporción alquiler: Damián 0% | Maxi 0%</p>
+                        <button id="btn-guardar-ingresos" class="btn-secundario" style="width: auto; padding: 8px 16px; font-size:13px;">💾 Guardar Ingresos</button>
+                    </div>
+                </section>
+
+                <section id="seccion-privada-personal" class="card card-privada">
+                    <h2>🔒 Mi Finanza Personal Privada (<span id="nombre-privado-titular">Usuario</span>)</h2>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+                        Acá podés gestionar el saldo que te quedó del mes anterior. Tus gastos se actualizan automáticamente.
+                    </p>
+                    <div class="grid-4" style="align-items: end;">
+                        <div class="form-group">
+                            <label for="saldo-anterior">Saldo Caja Mes Anterior</label>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" id="saldo-anterior" class="monto-input" placeholder="Ej: 120.000" inputmode="numeric" style="width: 100%;">
+                                <button id="btn-guardar-saldo" class="btn-secundario" style="width: auto; padding: 12px 16px;" title="Guardar Saldo">💾</button>
+                            </div>
+                        </div>
+                        <div class="form-group"><label for="mis-gastos-totales">Egresos Efectivo/Transf.</label><input type="text" id="mis-gastos-totales" style="font-weight: bold; color: var(--danger-color);" class="monto-input" placeholder="$0" readonly></div>
+                        <div class="form-group"><label for="mis-gastos-credito">Consumos Tarjeta (A pagar)</label><input type="text" id="mis-gastos-credito" style="font-weight: bold; color: #ff9500;" class="monto-input" placeholder="$0" readonly></div>
+                        <div class="form-group"><label for="saldo-disponible-final">Caja Disponible Restante</label><input type="text" id="saldo-disponible-final" style="font-weight: bold; color: var(--success-color);" readonly placeholder="$0"></div>
+                    </div>
+
+                    <div class="grid-2" style="margin-top: 24px;">
+                        <section class="card" style="box-shadow: none; border: 1px solid var(--border-color); background: #fff;">
+                            <h2 style="font-size: 16px; margin-bottom: 10px;">Mis Gastos por Categoría 🛒</h2>
+                            <div class="chart-container" style="max-height: 220px;">
+                                <canvas id="chart-categorias-privado"></canvas>
+                            </div>
+                        </section>
+                    </div>
+
+                    <div style="margin-top: 20px;">
+                        <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #004085;">Detalle de mis Gastos Personales (Ropa, salidas, auto, etc) 👤</h3>
+                        
+                        <div class="filtros-tabla">
+                            <input type="text" id="search-privado" class="filtro-input" placeholder="🔍 Buscar por concepto..." onkeyup="filtrarTabla('tabla-gastos-privados-body', 'search-privado', 'cat-privado', 'medio-privado')">
+                            <select id="cat-privado" class="filtro-input" onchange="filtrarTabla('tabla-gastos-privados-body', 'search-privado', 'cat-privado', 'medio-privado')">
+                                <option value="">Todas las categorías</option>
+                            </select>
+                            <select id="medio-privado" class="filtro-input" onchange="filtrarTabla('tabla-gastos-privados-body', 'search-privado', 'cat-privado', 'medio-privado')">
+                                <option value="">Todos los medios de pago</option>
+                            </select>
+                        </div>
+
+                        <div class="tabla-wrapper">
+                            <table id="tabla-gastos-privados">
+                                <thead><tr><th>Fecha</th><th>Concepto</th><th>Reparto</th><th>Categoría</th><th>Medio / Tarjeta</th><th>Monto</th><th>Acción</th></tr></thead>
+                                <tbody id="tabla-gastos-privados-body">
+                                    <tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">Cargando mis gastos...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- VISTA 5: MEDIOS DE PAGO -->
+            <div id="vista-tarjetas" class="modulo-vista oculto">
+                <section class="card">
+                    <h2>💳 Registrar Nueva Tarjeta de Crédito</h2>
+                    <form id="form-tarjeta" style="margin-bottom: 20px;">
+                        <div class="grid-4">
+                            <div class="form-group"><label>¿Quién la usa?</label><select id="tarjeta-titular"><option value="Dami">Damián</option><option value="Maxi">Maxi</option></select></div>
+                            <div class="form-group"><label>Tipo de Tarjeta</label><select id="tarjeta-tipo"><option value="propia">💳 Titular</option><option value="extension">📑 Extensión</option></select></div>
+                            <div class="form-group"><label>Marca / Banco</label><input type="text" id="tarjeta-marca" placeholder="Ej: Visa Galicia" required></div>
+                            <div class="form-group"><label>Últimos 4 Dígitos</label><input type="text" id="tarjeta-ultimos4" maxlength="4" placeholder="Ej: 7553" required></div>
+                        </div>
+                        <button type="submit" class="btn-secundario">+ Guardar Tarjeta</button>
+                    </form>
+                    <div id="lista-tarjetas"><p style="font-size: 13px; color: var(--text-secondary);">Cargando...</p></div>
+                </section>
+
+                <section class="card card-importador">
+                    <h2>🏦 Registrar Cuenta Bancaria / Billetera</h2>
+                    <form id="form-cuenta" style="margin-bottom: 20px;">
+                        <div class="grid-3">
+                            <div class="form-group"><label>Titular</label><select id="cuenta-titular"><option value="Dami">Damián</option><option value="Maxi">Maxi</option></select></div>
+                            <div class="form-group"><label>Banco / Billetera</label><input type="text" id="cuenta-banco" placeholder="Ej: Mercado Pago" required></div>
+                            <div class="form-group"><label>Alias (Opcional)</label><input type="text" id="cuenta-alias" placeholder="Ej: dami.mp"></div>
+                        </div>
+                        <button type="submit" class="btn-secundario">+ Guardar Cuenta</button>
+                    </form>
+                    <div id="lista-cuentas"><p style="font-size: 13px; color: var(--text-secondary);">Cargando...</p></div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- CONEXIÓN FIREBASE Y LÓGICA DE NEGOCIO -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, setDoc, deleteDoc, doc, getDoc, updateDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAppvZkCIXB4LLTBMIipFcRR6T_sJyQ1PA",
+            authDomain: "app-gastos-app.firebaseapp.com",
+            projectId: "app-gastos-app",
+            storageBucket: "app-gastos-app.firebasestorage.app",
+            messagingSenderId: "799819701178",
+            appId: "1:799819701178:web:bce68957bada57913c9b83"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        const pantallaLoginWrapper = document.getElementById('pantalla-login-wrapper');
+        const seccionApp = document.getElementById('seccion-app');
+        const formLogin = document.getElementById('form-login');
+        const filtroMesInput = document.getElementById('filtro-mes');
+
+        const hoy = new Date();
+        filtroMesInput.value = hoy.toISOString().slice(0, 7);
+        document.getElementById('fecha-manual').value = hoy.toISOString().split('T')[0];
+
+        function obtenerNombreUsuario(email) {
+            if (!email) return "Usuario";
+            return email.toLowerCase().includes("dami") ? "Damian" : "Maxi";
+        }
+
+        let listaGastosGlobal = [];
+        let listaTarjetasGlobal = [];
+        let listaCuentasGlobal = [];
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                pantallaLoginWrapper.classList.add('oculto');
+                seccionApp.classList.remove('oculto');
+                const nombreUser = obtenerNombreUsuario(user.email);
+                document.getElementById('usuario-activo-email').textContent = nombreUser === "Damian" ? "Dami" : "Maxi";
+                document.getElementById('nombre-privado-titular').textContent = nombreUser === "Damian" ? "Damián" : "Maxi";
+                
+                escucharTarjetasYcuentas();
+                escucharGastosEnTiempoReal();
+                cargarIngresosYsaldoDelMes();
+            } else {
+                pantallaLoginWrapper.classList.remove('oculto');
+                seccionApp.classList.add('oculto');
+            }
+        });
+
+        formLogin.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                await signInWithEmailAndPassword(auth, document.getElementById('login-email').value, document.getElementById('login-password').value);
+                formLogin.reset();
+            } catch (error) { alert("Error de autenticación."); }
+        });
+
+        document.getElementById('btn-logout').addEventListener('click', () => signOut(auth));
+
+        window.cambiarVista = function(idVista, boton) {
+            document.querySelectorAll('.modulo-vista').forEach(v => v.classList.add('oculto'));
+            document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('activo'));
+            document.getElementById(idVista).classList.remove('oculto');
+            boton.classList.add('activo');
+        };
+
+        const categoriasPorTipo = {
+            proporcional: ['🏠 Alquiler'],
+            comun: ['🛒 Supermercado', '💡 Luz', '🔥 Gas', '🌐 Internet', '💧 Agua', '🏠 Seguro Casa', '🧹 Servicio Doméstico', '🏊‍♂️ Servicio Pileta', '🧪 Insumos Pileta', '🐈 Mascotas', '🛠️ Reparaciones Casa', '🍷 Salidas/Ocio'],
+            privado: ['⚕️ Obra Social', '🍷 Salidas/Ocio', '👕 Vestimenta', '✂️ Peluquería', '⛽ Combustible', '🚗 Seguro Auto', '🔧 Service Auto', '📄 Patente', '🛍️ Varios']
+        };
+
+        function inicializarSelectoresFiltro() {
+            const selectComun = document.getElementById('cat-comun');
+            const selectPrivado = document.getElementById('cat-privado');
+            
+            let optsComun = '<option value="">Todas las categorías</option>';
+            categoriasPorTipo['comun'].forEach(c => optsComun += `<option value="${c}">${c}</option>`);
+            categoriasPorTipo['proporcional'].forEach(c => optsComun += `<option value="${c}">${c}</option>`);
+            if (selectComun) selectComun.innerHTML = optsComun;
+
+            let optsPrivado = '<option value="">Todas las categorías</option>';
+            categoriasPorTipo['privado'].forEach(c => optsPrivado += `<option value="${c}">${c}</option>`);
+            if (selectPrivado) selectPrivado.innerHTML = optsPrivado;
+        }
+        inicializarSelectoresFiltro();
+
+        const selectTipoRepartoManual = document.getElementById('tipo-reparto');
+        const selectCategoriaManual = document.getElementById('categoria');
+        function actualizarCategoriasManuales() {
+            selectCategoriaManual.innerHTML = '';
+            (categoriasPorTipo[selectTipoRepartoManual.value] || []).forEach(cat => {
+                const op = document.createElement('option'); op.value = cat; op.textContent = cat; selectCategoriaManual.appendChild(op);
+            });
+        }
+        selectTipoRepartoManual.addEventListener('change', actualizarCategoriasManuales);
+        actualizarCategoriasManuales();
+
+        window.actualizarCategoriasFilaBorrador = function(index) {
+            const selectTipo = document.getElementById(`reparto-borrador-${index}`);
+            const selectCat = document.getElementById(`cat-borrador-${index}`);
+            selectCat.innerHTML = '';
+            (categoriasPorTipo[selectTipo.value] || []).forEach(cat => {
+                const op = document.createElement('option'); op.value = cat; op.textContent = cat; selectCat.appendChild(op);
+            });
+        };
+
+        window.actualizarCategoriaGasto = async function(idGasto, nuevaCategoria) {
+            try { await updateDoc(doc(db, "gastos", idGasto), { categoria: nuevaCategoria }); } 
+            catch (error) { alert("Error al actualizar la categoría."); }
+        };
+
+        window.actualizarRepartoGasto = async function(idGasto, nuevoReparto) {
+            try {
+                const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
+                let nuevaCategoria = gastoObj ? gastoObj.categoria : "";
+                
+                if (nuevoReparto === 'privado' && !categoriasPorTipo['privado'].includes(nuevaCategoria)) {
+                    nuevaCategoria = '🛍️ Varios';
+                } else if (nuevoReparto === 'comun' && !categoriasPorTipo['comun'].includes(nuevaCategoria)) {
+                    nuevaCategoria = '🛒 Supermercado';
+                } else if (nuevoReparto === 'proporcional') {
+                    nuevaCategoria = '🏠 Alquiler';
+                }
+
+                await updateDoc(doc(db, "gastos", idGasto), { tipoReparto: nuevoReparto, categoria: nuevaCategoria });
+            } catch (error) { alert("Error al actualizar el tipo de reparto."); }
+        };
+
+        window.editarConcepto = async function(idGasto) {
+            const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
+            if (!gastoObj) return;
+            const nuevoConcepto = prompt("Modificá el concepto/detalle del gasto:", gastoObj.concepto);
+            if (nuevoConcepto !== null && nuevoConcepto.trim() !== "" && nuevoConcepto !== gastoObj.concepto) {
+                try { await updateDoc(doc(db, "gastos", idGasto), { concepto: nuevoConcepto.trim() }); } 
+                catch (error) { alert("Error al actualizar el concepto."); }
+            }
+        };
+
+        window.editarFecha = async function(idGasto) {
+            const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
+            if (!gastoObj) return;
+
+            const fechaObj = gastoObj.fecha ? gastoObj.fecha.toDate() : new Date();
+            const dia = String(fechaObj.getDate()).padStart(2, '0');
+            const mes = String(fechaObj.getMonth() + 1).padStart(2, '0');
+            const anio = fechaObj.getFullYear();
+            const fechaActualFormat = `${anio}-${mes}-${dia}`; 
+
+            const nuevaFecha = prompt("Modificá la fecha del consumo (Formato AAAA-MM-DD):", fechaActualFormat);
+            
+            if (nuevaFecha && nuevaFecha.trim() !== "" && nuevaFecha !== fechaActualFormat) {
+                try {
+                    const [y, m, d] = nuevaFecha.split('-');
+                    const nuevaFechaObj = new Date(y, m - 1, d, 12, 0, 0); 
+                    await updateDoc(doc(db, "gastos", idGasto), { fecha: nuevaFechaObj });
+                } catch (error) {
+                    alert("Error al actualizar la fecha. Asegurate de usar guiones (AAAA-MM-DD).");
+                }
+            }
+        };
+
+        window.filtrarTabla = function(idTabla, idSearch, idCat, idMedio) {
+            const textoBusqueda = document.getElementById(idSearch).value.toLowerCase();
+            const categoriaBuscada = document.getElementById(idCat).value;
+            const medioBuscado = document.getElementById(idMedio).value;
+            const filas = document.getElementById(idTabla).getElementsByTagName('tr');
+
+            for (let i = 0; i < filas.length; i++) {
+                const tr = filas[i];
+                if (tr.cells.length === 1) continue; 
+                
+                const concepto = tr.getAttribute('data-concepto') || "";
+                const categoria = tr.getAttribute('data-categoria') || "";
+                const medio = tr.getAttribute('data-medio') || "";
+
+                const coincideTexto = concepto.includes(textoBusqueda);
+                const coincideCat = categoriaBuscada === "" || categoria === categoriaBuscada;
+                const coincideMedio = medioBuscado === "" || medio === medioBuscado;
+
+                if (coincideTexto && coincideCat && coincideMedio) {
+                    tr.style.display = "";
+                } else {
+                    tr.style.display = "none";
+                }
+            }
+        };
+
+        const selectPagadoPor = document.getElementById('pagado-por');
+        const selectFormatoPago = document.getElementById('formato-pago');
+        const contTarjeta = document.getElementById('contenedor-tarjeta');
+        const contCuenta = document.getElementById('contenedor-cuenta');
+        const selectGastoTarjeta = document.getElementById('gasto-tarjeta-asociada');
+        const selectGastoCuenta = document.getElementById('gasto-cuenta-asociada');
+
+        function actualizarFiltrosMedioPago() {
+            const quienPaga = selectPagadoPor.value;
+            const formato = selectFormatoPago.value;
+            const titularBuscado = quienPaga === 'Damian' ? 'Dami' : 'Maxi';
+
+            if (formato === 'efectivo') {
+                contTarjeta.style.display = 'none'; contCuenta.style.display = 'none';
+            } else if (formato === 'tarjeta') {
+                contTarjeta.style.display = 'flex'; contCuenta.style.display = 'none';
+                selectGastoTarjeta.innerHTML = '';
+                const tarjetasFiltradas = listaTarjetasGlobal.filter(t => t.titular === titularBuscado);
+                if(tarjetasFiltradas.length === 0) selectGastoTarjeta.innerHTML = '<option value="">Sin tarjetas cargadas</option>';
+                tarjetasFiltradas.forEach(t => {
+                    const op = document.createElement('option'); op.value = t.id; op.textContent = `${t.marca} (**** ${t.ultimos4})`; selectGastoTarjeta.appendChild(op);
+                });
+            } else if (formato === 'transferencia') {
+                contTarjeta.style.display = 'none'; contCuenta.style.display = 'flex';
+                selectGastoCuenta.innerHTML = '';
+                const cuentasFiltradas = listaCuentasGlobal.filter(c => c.titular === titularBuscado);
+                if(cuentasFiltradas.length === 0) selectGastoCuenta.innerHTML = '<option value="">Sin cuentas cargadas</option>';
+                cuentasFiltradas.forEach(c => {
+                    const op = document.createElement('option'); op.value = c.id; op.textContent = c.banco; selectGastoCuenta.appendChild(op);
+                });
+            }
+        }
+
+        selectPagadoPor.addEventListener('change', actualizarFiltrosMedioPago);
+        selectFormatoPago.addEventListener('change', actualizarFiltrosMedioPago);
+
+        document.getElementById('form-tarjeta').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                await addDoc(collection(db, "tarjetas"), { titular: document.getElementById('tarjeta-titular').value, tipo: document.getElementById('tarjeta-tipo').value, marca: document.getElementById('tarjeta-marca').value, ultimos4: document.getElementById('tarjeta-ultimos4').value });
+                document.getElementById('form-tarjeta').reset();
+            } catch (error) { alert("Error al guardar la tarjeta."); }
+        });
+
+        document.getElementById('form-cuenta').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                await addDoc(collection(db, "cuentas"), { titular: document.getElementById('cuenta-titular').value, banco: document.getElementById('cuenta-banco').value, alias: document.getElementById('cuenta-alias').value });
+                document.getElementById('form-cuenta').reset();
+            } catch (error) { alert("Error al guardar la cuenta."); }
+        });
+
+        function renderizarDropdownsMedios() {
+            const selectImp = document.getElementById('archivo-medio-select');
+            selectImp.innerHTML = `<option value="efectivo">💵 Efectivo / Ninguna</option>`;
+            
+            let optFiltros = '<option value="">Todos los medios de pago</option><option value="efectivo">💵 Efectivo</option>';
+
+            listaTarjetasGlobal.forEach(t => {
+                const desc = t.tipo === 'extension' ? '(Extensión)' : '(Propia)';
+                selectImp.innerHTML += `<option value="tarjeta_${t.id}">💳 ${t.marca} - ${t.titular} ${desc}</option>`;
+                optFiltros += `<option value="${t.id}">💳 ${t.marca} (${t.titular} - ${desc})</option>`;
+            });
+
+            listaCuentasGlobal.forEach(c => {
+                selectImp.innerHTML += `<option value="cuenta_${c.id}">🏦 ${c.banco} - ${c.titular}</option>`;
+                optFiltros += `<option value="${c.id}">🏦 ${c.banco} (${c.titular})</option>`;
+            });
+
+            document.getElementById('medio-comun').innerHTML = optFiltros;
+            document.getElementById('medio-privado').innerHTML = optFiltros;
+
+            actualizarFiltrosMedioPago();
+        }
+
+        function escucharTarjetasYcuentas() {
+            onSnapshot(collection(db, "tarjetas"), (snapshot) => {
+                listaTarjetasGlobal = [];
+                const contListaT = document.getElementById('lista-tarjetas'); contListaT.innerHTML = ""; 
+                snapshot.forEach((docSnap) => {
+                    const t = docSnap.data(); t.id = docSnap.id; listaTarjetasGlobal.push(t);
+                    const desc = t.tipo === 'extension' ? '(Extensión)' : '(Propia)';
+                    contListaT.innerHTML += `<div class="tarjeta-item"><span>💳 <strong>${t.marca}</strong> - ${t.titular} <small>${desc}</small> (**** ${t.ultimos4})</span><button class="btn-eliminar" onclick="eliminarMedio('tarjetas', '${t.id}')">🗑️</button></div>`;
+                });
+                renderizarDropdownsMedios();
+            });
+
+            onSnapshot(collection(db, "cuentas"), (snapshot) => {
+                listaCuentasGlobal = [];
+                const contListaC = document.getElementById('lista-cuentas'); contListaC.innerHTML = "";
+                snapshot.forEach((docSnap) => {
+                    const c = docSnap.data(); c.id = docSnap.id; listaCuentasGlobal.push(c);
+                    contListaC.innerHTML += `<div class="tarjeta-item"><span>🏦 <strong>${c.banco}</strong> - ${c.titular}</span><button class="btn-eliminar" onclick="eliminarMedio('cuentas', '${c.id}')">🗑️</button></div>`;
+                });
+                renderizarDropdownsMedios();
+            });
+        }
+
+        window.eliminarMedio = async function(coleccion, id) {
+            if (confirm("¿Borrar este medio de pago?")) { await deleteDoc(doc(db, coleccion, id)); }
+        };
+
+        async function cargarIngresosYsaldoDelMes() {
+            const mes = filtroMesInput.value;
+            const docRef = doc(db, "ingresos", mes);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                document.getElementById('sueldo-damian').value = new Intl.NumberFormat('es-AR').format(data.sueldoDamian || 0);
+                document.getElementById('sueldo-maxi').value = new Intl.NumberFormat('es-AR').format(data.sueldoMaxi || 0);
+
+                const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
+                const saldoGuardado = esDamian ? (data.saldoDamian || 0) : (data.saldoMaxi || 0);
+                document.getElementById('saldo-anterior').value = saldoGuardado ? new Intl.NumberFormat('es-AR').format(saldoGuardado) : '';
+            } else {
+                document.getElementById('sueldo-damian').value = ''; 
+                document.getElementById('sueldo-maxi').value = '';
+                document.getElementById('saldo-anterior').value = '';
+            }
+            calcularProporcionAlquiler();
+            if(window.recalcularBalanceNeteado) window.recalcularBalanceNeteado();
+            if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+        }
+
+        document.getElementById('btn-guardar-ingresos').addEventListener('click', async () => {
+            const mes = filtroMesInput.value;
+            const sD = parseInt(document.getElementById('sueldo-damian').value.replace(/\D/g, '') || 0);
+            const sM = parseInt(document.getElementById('sueldo-maxi').value.replace(/\D/g, '') || 0);
+            try {
+                const btn = document.getElementById('btn-guardar-ingresos');
+                btn.textContent = "Guardando..."; btn.disabled = true;
+                await setDoc(doc(db, "ingresos", mes), { sueldoDamian: sD, sueldoMaxi: sM }, { merge: true });
+                btn.textContent = "✓ Guardado"; 
+                setTimeout(() => { btn.textContent = "💾 Guardar Ingresos"; btn.disabled = false; }, 2000);
+            } catch (error) { alert("Error al guardar ingresos."); }
+        });
+
+        document.getElementById('btn-guardar-saldo').addEventListener('click', async () => {
+            const mes = filtroMesInput.value;
+            const saldoLimpio = parseInt(document.getElementById('saldo-anterior').value.replace(/\D/g, '') || 0, 10);
+            const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
+            
+            const btn = document.getElementById('btn-guardar-saldo');
+            btn.textContent = "⏳"; btn.disabled = true;
+
+            try {
+                if (esDamian) {
+                    await setDoc(doc(db, "ingresos", mes), { saldoDamian: saldoLimpio }, { merge: true });
+                } else {
+                    await setDoc(doc(db, "ingresos", mes), { saldoMaxi: saldoLimpio }, { merge: true });
+                }
+                btn.textContent = "✓"; 
+                setTimeout(() => { btn.textContent = "💾"; btn.disabled = false; }, 2000);
+            } catch (error) { alert("Error al guardar saldo."); btn.textContent = "💾"; btn.disabled = false; }
+        });
+
+        window.estadoDeudaActual = null;
+        document.getElementById('btn-abrir-saldar').addEventListener('click', () => {
+            const cont = document.getElementById('contenedor-saldar-deuda');
+            cont.classList.remove('oculto');
+            const hoyStr = new Date().toISOString().split('T')[0];
+            document.getElementById('saldar-fecha').value = hoyStr;
+            if (window.estadoDeudaActual) {
+                document.getElementById('saldar-monto').value = new Intl.NumberFormat('es-AR').format(window.estadoDeudaActual.monto);
+            }
+        });
+
+        document.getElementById('form-saldar-deuda').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!window.estadoDeudaActual) return;
+            const montoLimpio = parseInt(document.getElementById('saldar-monto').value.replace(/\D/g, ''), 10);
+            const medio = document.getElementById('saldar-medio').value;
+            const fechaIngresada = new Date(document.getElementById('saldar-fecha').value + "T12:00:00");
+
+            if (!montoLimpio || montoLimpio <= 0) return;
+
+            try {
+                await addDoc(collection(db, "gastos"), {
+                    concepto: "Liquidación de saldos del mes", monto: montoLimpio, categoria: "Liquidación",
+                    pagadoPor: window.estadoDeudaActual.deudor, tipoReparto: "devolucion", formato: medio,
+                    medioId: "", usuarioCreador: auth.currentUser.email, fecha: fechaIngresada
+                });
+                document.getElementById('form-saldar-deuda').reset();
+                document.getElementById('contenedor-saldar-deuda').classList.add('oculto');
+            } catch (error) { alert("Error al registrar el pago de la deuda."); }
+        });
+
+        filtroMesInput.addEventListener('change', () => { escucharGastosEnTiempoReal(); cargarIngresosYsaldoDelMes(); });
+
+        function escucharGastosEnTiempoReal() {
+            const q = query(collection(db, "gastos"), orderBy("fecha", "desc"));
+            onSnapshot(q, (snapshot) => {
+                listaGastosGlobal = [];
+                const tablaComunBody = document.getElementById('tabla-gastos-body');
+                const tablaPrivadaBody = document.getElementById('tabla-gastos-privados-body');
+                tablaComunBody.innerHTML = ""; tablaPrivadaBody.innerHTML = "";
+
+                const mesSeleccionado = filtroMesInput.value;
+                const usuarioLogueadoActual = obtenerNombreUsuario(auth.currentUser.email);
+
+                let contadorComunes = 0; let contadorPrivados = 0;
+
+                snapshot.forEach((docSnap) => {
+                    const gasto = docSnap.data(); gasto.id = docSnap.id;
+                    const fechaObj = gasto.fecha ? gasto.fecha.toDate() : new Date();
+                    
+                    if (fechaObj.toISOString().slice(0, 7) === mesSeleccionado) {
+                        listaGastosGlobal.push(gasto);
+                        const fechaFormateada = fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+                        const montoFormateado = new Intl.NumberFormat('es-AR').format(gasto.monto);
+
+                        let nombreMedioVisual = "";
+                        let medioFiltroVal = gasto.medioId ? gasto.medioId : gasto.formato;
+
+                        if (gasto.formato === 'efectivo') { nombreMedioVisual = "💵 Efectivo"; medioFiltroVal = "efectivo"; }
+                        else if (gasto.formato === 'transferencia') {
+                            const cObj = listaCuentasGlobal.find(c => c.id === gasto.medioId);
+                            nombreMedioVisual = cObj ? `🏦 ${cObj.banco}` : '🏦 Transferencia';
+                        } else if (gasto.formato === 'tarjeta') {
+                            const tObj = listaTarjetasGlobal.find(t => t.id === gasto.medioId);
+                            nombreMedioVisual = tObj ? `💳 ${tObj.marca} (${tObj.tipo === 'extension' ? 'Ext' : 'Propia'})` : '💳 Tarjeta';
+                        }
+
+                        // DOM para los botones de edición
+                        const botonEditarConcepto = `<button class="btn-editar-icono" title="Editar Concepto" onclick="editarConcepto('${gasto.id}')">✏️</button>`;
+                        const botonEditarFecha = `<button class="btn-editar-icono" title="Editar Fecha" onclick="editarFecha('${gasto.id}')">✏️</button>`;
+
+                        // CONDICIÓN PARA NO SUMAR GASTOS PERSONALES FÍSICOS AL RESUMEN COMÚN
+                        // Este código se corrigió en el bloque de recalculado de balance.
+
+                        if (gasto.tipoReparto === 'comun' || gasto.tipoReparto === 'proporcional' || gasto.tipoReparto === 'devolucion') {
+                            contadorComunes++;
+                            let selectRepartoHTML = `<select class="mini-select" onchange="actualizarRepartoGasto('${gasto.id}', this.value)">
+                                <option value="comun" ${gasto.tipoReparto === 'comun' ? 'selected' : ''}>🤝 Común</option>
+                                <option value="privado" ${gasto.tipoReparto === 'privado' ? 'selected' : ''}>👤 Personal</option>
+                                <option value="proporcional" ${gasto.tipoReparto === 'proporcional' ? 'selected' : ''}>🏠 Alquiler %</option>
+                            </select>`;
+                            if (gasto.tipoReparto === 'devolucion') { selectRepartoHTML = `<span class="badge-pagado">🤝 Liquidación</span>`; }
+
+                            tablaComunBody.innerHTML += `
+                                <tr data-concepto="${gasto.concepto.toLowerCase()}" data-categoria="${gasto.categoria}" data-medio="${medioFiltroVal}">
+                                    <td>${fechaFormateada} ${botonEditarFecha}</td>
+                                    <td><strong>${gasto.concepto}</strong> ${botonEditarConcepto} <br><small style="color:var(--text-secondary);">${gasto.categoria}</small></td>
+                                    <td><span class="badge-pagado">${gasto.pagadoPor}</span></td>
+                                    <td><small>${nombreMedioVisual}</small></td>
+                                    <td>${selectRepartoHTML}</td>
+                                    <td><strong>$${montoFormateado}</strong></td>
+                                    <td><button class="btn-eliminar" onclick="eliminarGasto('${gasto.id}')">🗑️</button></td>
+                                </tr>`;
+                        }
+
+                        if (gasto.tipoReparto === 'privado' && gasto.pagadoPor === usuarioLogueadoActual) {
+                            contadorPrivados++;
+                            let selectRepartoPrivadoHTML = `<select class="mini-select" onchange="actualizarRepartoGasto('${gasto.id}', this.value)">
+                                <option value="comun">🤝 Común</option>
+                                <option value="privado" selected>👤 Personal</option>
+                                <option value="proporcional">🏠 Alquiler %</option>
+                            </select>`;
+
+                            let selectCatHTML = `<select class="mini-select" onchange="actualizarCategoriaGasto('${gasto.id}', this.value)">`;
+                            categoriasPorTipo['privado'].forEach(cat => {
+                                let isSelected = (cat === gasto.categoria) ? 'selected' : '';
+                                selectCatHTML += `<option value="${cat}" ${isSelected}>${cat}</option>`;
+                            });
+                            selectCatHTML += `</select>`;
+
+                            tablaPrivadaBody.innerHTML += `
+                                <tr data-concepto="${gasto.concepto.toLowerCase()}" data-categoria="${gasto.categoria}" data-medio="${medioFiltroVal}">
+                                    <td>${fechaFormateada} ${botonEditarFecha}</td>
+                                    <td><strong>${gasto.concepto}</strong> ${botonEditarConcepto}</td>
+                                    <td>${selectRepartoPrivadoHTML}</td>
+                                    <td>${selectCatHTML}</td>
+                                    <td><small>${nombreMedioVisual}</small></td>
+                                    <td><strong>$${montoFormateado}</strong></td>
+                                    <td><button class="btn-eliminar" onclick="eliminarGasto('${gasto.id}')">🗑️</button></td>
+                                </tr>`;
+                        }
+                    }
+                });
+
+                if (contadorComunes === 0) tablaComunBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">No hay gastos comunes o liquidaciones registradas.</td></tr>`;
+                if (contadorPrivados === 0) tablaPrivadaBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">No tenés gastos personales registrados.</td></tr>`;
+
+                filtrarTabla('tabla-gastos-body', 'search-comun', 'cat-comun', 'medio-comun');
+                filtrarTabla('tabla-gastos-privados-body', 'search-privado', 'cat-privado', 'medio-privado');
+
+                recalcularBalanceNeteado();
+                calcularDineroPersonalPrivado();
+                actualizarGraficosDashboard();
+            });
+        }
+
+        window.eliminarGasto = async function(id) { if (confirm("¿Borrar este gasto o pago?")) await deleteDoc(doc(db, "gastos", id)); };
+
+        document.getElementById('form-gasto').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const concepto = document.getElementById('concepto').value;
+            const montoLimpio = parseInt(document.getElementById('monto').value.replace(/\D/g, ''), 10);
+            const formato = document.getElementById('formato-pago').value;
+            const fechaManual = document.getElementById('fecha-manual').value;
+            const fechaGasto = new Date(fechaManual + "T12:00:00");
+            
+            let medioId = "";
+            if (formato === 'tarjeta') medioId = document.getElementById('gasto-tarjeta-asociada').value;
+            else if (formato === 'transferencia') medioId = document.getElementById('gasto-cuenta-asociada').value;
+
+            if (!montoLimpio) return;
+
+            try {
+                await addDoc(collection(db, "gastos"), {
+                    concepto: concepto, monto: montoLimpio, categoria: document.getElementById('categoria').value,
+                    pagadoPor: document.getElementById('pagado-por').value, tipoReparto: document.getElementById('tipo-reparto').value,
+                    formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: fechaGasto
+                });
+                document.getElementById('form-gasto').reset();
+                document.getElementById('fecha-manual').value = new Date().toISOString().split('T')[0];
+                actualizarCategoriasManuales(); actualizarFiltrosMedioPago();
+            } catch (e) { alert("Error al confirmar el gasto."); }
+        });
+
+        document.getElementById('btn-procesar-archivo').addEventListener('click', async () => {
+            const medioImportacion = document.getElementById('archivo-medio-select').value;
+            const file = document.getElementById('archivo-input').files[0];
+            if (!file) return;
+
+            const btn = document.getElementById('btn-procesar-archivo'); btn.disabled = true;
+            try {
+                const consumos = await procesarExcelOCSV(file);
+                const tbody = document.getElementById('tabla-previa-ia-body'); tbody.innerHTML = "";
+                document.getElementById('contenedor-previa-ia').classList.remove('oculto');
+                
+                let pDefecto = "Damian";
+                if (medioImportacion.startsWith('tarjeta_')) {
+                    const id = medioImportacion.replace('tarjeta_', '');
+                    const tObj = listaTarjetasGlobal.find(t => t.id === id);
+                    if (tObj) pDefecto = tObj.titular === "Maxi" ? "Maxi" : "Damian";
+                } else if (medioImportacion.startsWith('cuenta_')) {
+                    const id = medioImportacion.replace('cuenta_', '');
+                    const cObj = listaCuentasGlobal.find(c => c.id === id);
+                    if (cObj) pDefecto = cObj.titular === "Maxi" ? "Maxi" : "Damian";
+                }
+
+                let optCats = ''; categoriasPorTipo['comun'].forEach(cat => { optCats += `<option value="${cat}">${cat}</option>`; });
+                let optMedios = `<option value="efectivo">💵 Efectivo / Otra</option>`;
+                listaTarjetasGlobal.forEach(t => { 
+                    const selected = medioImportacion === `tarjeta_${t.id}` ? 'selected' : '';
+                    optMedios += `<option value="tarjeta_${t.id}" ${selected}>💳 ${t.marca} - ${t.titular}</option>`; 
+                });
+                listaCuentasGlobal.forEach(c => { 
+                    const selected = medioImportacion === `cuenta_${c.id}` ? 'selected' : '';
+                    optMedios += `<option value="cuenta_${c.id}" ${selected}>🏦 ${c.banco} - ${c.titular}</option>`; 
+                });
+
+                consumos.forEach((c, i) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${c.fecha}</td><td><strong>${c.concepto}</strong></td><td>$${new Intl.NumberFormat('es-AR').format(c.monto)}</td>
+                        <td><select class="mini-select" id="reparto-borrador-${i}" onchange="actualizarCategoriasFilaBorrador(${i})"><option value="comun" selected>Común</option><option value="privado">Personal</option><option value="proporcional">Alquiler %</option></select></td>
+                        <td><select class="mini-select" id="cat-borrador-${i}">${optCats}</select></td>
+                        <td><select class="mini-select" id="pagador-borrador-${i}"><option value="Damian" ${pDefecto === 'Damian' ? 'selected' : ''}>Damián</option><option value="Maxi" ${pDefecto === 'Maxi' ? 'selected' : ''}>Maxi</option></select></td>
+                        <td><select class="mini-select" id="medio-borrador-${i}">${optMedios}</select></td>
+                        <td><button class="btn-accion-rapida" onclick="confirmarGastoBorrador('${c.concepto}', ${c.monto}, ${i}, this)">+ Agregar</button></td>`;
+                    tbody.appendChild(tr);
+                });
+            } catch (error) { alert("Error al leer la planilla."); } finally { btn.disabled = false; }
+        });
+
+        function procesarExcelOCSV(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    let colFecha = 1, colConcepto = 2, colMonto = 5; let datosInicio = 1;
+                    const jsonRows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+                    
+                    for (let i = 0; i < Math.min(15, jsonRows.length); i++) {
+                        const fila = jsonRows[i]; if (!fila) continue;
+                        const textoFila = fila.map(c => String(c).toLowerCase()).join(' ');
+                        if (textoFila.includes('importe') || textoFila.includes('monto')) {
+                            for (let j = 0; j < fila.length; j++) {
+                                const celda = String(fila[j] || '').toLowerCase();
+                                if (celda.includes('fecha')) colFecha = j;
+                                if (celda.includes('establecimiento') || celda.includes('detalle') || celda.includes('concepto')) colConcepto = j;
+                                if (celda.includes('importe') || celda.includes('monto')) colMonto = j;
+                            }
+                            datosInicio = i + 1; break;
+                        }
+                    }
+
+                    const consumos = [];
+                    for (let i = datosInicio; i < jsonRows.length; i++) {
+                        const fila = jsonRows[i]; if (!fila || fila.length === 0) continue;
+                        let concepto = String(fila[colConcepto] || fila[1] || fila[0] || 'Consumo').trim();
+                        let fechaGasto = fila[colFecha];
+                        let fechaFormateada = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+                        if (fechaGasto) fechaFormateada = String(fechaGasto).trim();
+
+                        let montoVal = fila[colMonto] !== undefined ? fila[colMonto] : fila[fila.length - 1];
+                        let montoNumerico = 0;
+
+                        if (typeof montoVal === 'number') { montoNumerico = montoVal; } 
+                        else if (typeof montoVal === 'string') {
+                            let texto = montoVal.trim();
+                            let lastComma = texto.lastIndexOf(','); let lastDot = texto.lastIndexOf('.');
+                            if (lastComma > lastDot) texto = texto.replace(/\./g, '').replace(',', '.'); else texto = texto.replace(/,/g, '');
+                            montoNumerico = parseFloat(texto);
+                        }
+                        if (!isNaN(montoNumerico) && montoNumerico > 0) {
+                            const montoLimpio = Math.round(montoNumerico);
+                            if (concepto.toUpperCase().includes('SU PAGO') || concepto.toUpperCase().includes('PAGO DE TARJETA')) continue; 
+                            consumos.push({ fecha: fechaFormateada, concepto: concepto, monto: montoLimpio });
+                        }
+                    }
+                    resolve(consumos);
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        window.confirmarGastoBorrador = async function(concepto, monto, index, boton) {
+            try {
+                const medioSeleccionado = document.getElementById(`medio-borrador-${index}`).value;
+                let formato = 'efectivo'; let medioId = '';
+                
+                if (medioSeleccionado.startsWith('tarjeta_')) { formato = 'tarjeta'; medioId = medioSeleccionado.replace('tarjeta_', ''); } 
+                else if (medioSeleccionado.startsWith('cuenta_')) { formato = 'transferencia'; medioId = medioSeleccionado.replace('cuenta_', ''); }
+
+                await addDoc(collection(db, "gastos"), {
+                    concepto: concepto, monto: monto, categoria: document.getElementById(`cat-borrador-${index}`).value,
+                    pagadoPor: document.getElementById(`pagador-borrador-${index}`).value, tipoReparto: document.getElementById(`reparto-borrador-${index}`).value,
+                    formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: new Date()
+                });
+                boton.parentElement.innerHTML = `<span style="color: var(--success-color); font-weight: bold;">✓ Agregado</span>`;
+            } catch (error) { alert("Error al confirmar."); }
+        };
+
+        window.recalcularBalanceNeteado = function() {
+            let balanceNetoDamian = 0; let totalPagadoDamian = 0; let totalPagadoMaxi = 0;
+            const sueldoDamian = obtenerNumeroLimpio('sueldo-damian'); const sueldoMaxi = obtenerNumeroLimpio('sueldo-maxi');
+            const totalIngresos = sueldoDamian + sueldoMaxi;
+            let pctDamian = totalIngresos > 0 ? sueldoDamian / totalIngresos : 0.5;
+            let pctMaxi = totalIngresos > 0 ? sueldoMaxi / totalIngresos : 0.5;
+
+            listaGastosGlobal.forEach(g => {
+                const monto = g.monto; const consumidor = g.pagadoPor; const reparto = g.tipoReparto;
+                let pagadorFinanciero = consumidor;
+
+                if (g.formato === 'tarjeta' && g.medioId) {
+                    const tObj = listaTarjetasGlobal.find(t => t.id === g.medioId);
+                    if (tObj) pagadorFinanciero = tObj.tipo === 'extension' ? (tObj.titular === 'Dami' ? 'Maxi' : 'Damian') : (tObj.titular === 'Dami' ? 'Damian' : 'Maxi');
+                }
+
+                if (reparto === 'comun') {
+                    if (pagadorFinanciero === 'Damian') { balanceNetoDamian += (monto * 0.5); totalPagadoDamian += monto; } else { balanceNetoDamian -= (monto * 0.5); totalPagadoMaxi += monto; }
+                } else if (reparto === 'proporcional') {
+                    if (pagadorFinanciero === 'Damian') { balanceNetoDamian += (monto * pctMaxi); totalPagadoDamian += monto; } else { balanceNetoDamian -= (monto * pctDamian); totalPagadoMaxi += monto; }
+                } else if (reparto === 'privado') {
+                    // SOLO IMPACTA EN EL DASHBOARD COMÚN SI HAY DEUDA CRUZADA (usa la tarjeta del otro)
+                    if (consumidor === 'Damian' && pagadorFinanciero === 'Maxi') { balanceNetoDamian -= monto; totalPagadoMaxi += monto; } 
+                    else if (consumidor === 'Maxi' && pagadorFinanciero === 'Damian') { balanceNetoDamian += monto; totalPagadoDamian += monto; } 
+                } else if (reparto === 'devolucion') {
+                    if (consumidor === 'Damian') { balanceNetoDamian += monto; } else { balanceNetoDamian -= monto; }
+                }
+            });
+
+            document.getElementById('detalle-saldos').textContent = `Paga al banco/resumen compartido: Damián $${new Intl.NumberFormat('es-AR').format(totalPagadoDamian)} | Maxi $${new Intl.NumberFormat('es-AR').format(totalPagadoMaxi)}`;
+            
+            const resTexto = document.getElementById('resultado-balance'); const estMetrica = document.getElementById('metric-estado');
+            const btnAbrirSaldar = document.getElementById('btn-abrir-saldar'); const contSaldar = document.getElementById('contenedor-saldar-deuda');
+
+            if (Math.abs(balanceNetoDamian) < 1) { 
+                resTexto.textContent = "🎉 ¡Las cuentas están perfectamente al día!"; estMetrica.textContent = "Al día";
+                btnAbrirSaldar.classList.add('oculto'); contSaldar.classList.add('oculto'); window.estadoDeudaActual = null;
+            } else if (balanceNetoDamian > 0) { 
+                resTexto.textContent = `👉 Maxi le debe $${new Intl.NumberFormat('es-AR').format(Math.round(balanceNetoDamian))} a Damián`; estMetrica.textContent = `Maxi debe $${new Intl.NumberFormat('es-AR').format(Math.round(balanceNetoDamian))}`; 
+                btnAbrirSaldar.classList.remove('oculto'); window.estadoDeudaActual = { deudor: 'Maxi', monto: Math.round(balanceNetoDamian) };
+            } else { 
+                resTexto.textContent = `👉 Damián le debe $${new Intl.NumberFormat('es-AR').format(Math.round(Math.abs(balanceNetoDamian)))} a Maxi`; estMetrica.textContent = `Dami debe $${new Intl.NumberFormat('es-AR').format(Math.round(Math.abs(balanceNetoDamian)))}`; 
+                btnAbrirSaldar.classList.remove('oculto'); window.estadoDeudaActual = { deudor: 'Damian', monto: Math.round(Math.abs(balanceNetoDamian)) };
+            }
+        };
+
+        let chartCatInstance = null; let chartAportesInstance = null; let chartPrivadoInstance = null;
+        function actualizarGraficosDashboard() {
+            let totalComun = 0; const porCat = {}; let pagaDami = 0; let pagaMaxi = 0;
+            const porCatPrivado = {}; const usuarioLogueadoActual = obtenerNombreUsuario(auth.currentUser ? auth.currentUser.email : "");
+
+            listaGastosGlobal.forEach(g => {
+                if(g.tipoReparto === 'comun' || g.tipoReparto === 'proporcional'){
+                    totalComun += g.monto; porCat[g.categoria || "Varios"] = (porCat[g.categoria || "Varios"] || 0) + g.monto;
+                    if (g.pagadoPor === "Damian") pagaDami += g.monto; if (g.pagadoPor === "Maxi") pagaMaxi += g.monto;
+                } else if (g.tipoReparto === 'privado' && g.pagadoPor === usuarioLogueadoActual) {
+                    porCatPrivado[g.categoria || "Varios"] = (porCatPrivado[g.categoria || "Varios"] || 0) + g.monto;
+                }
+            });
+
+            document.getElementById('metric-total-mes').textContent = "$" + new Intl.NumberFormat('es-AR').format(totalComun);
+            document.getElementById('metric-promedio').textContent = "$" + new Intl.NumberFormat('es-AR').format(Math.round(totalComun / (Object.keys(porCat).length || 1)));
+
+            if (chartCatInstance) chartCatInstance.destroy();
+            chartCatInstance = new Chart(document.getElementById('chart-categorias').getContext('2d'), { type: 'doughnut', data: { labels: Object.keys(porCat), datasets: [{ data: Object.values(porCat), backgroundColor: ['#0071e3', '#34c759', '#ff9500', '#ff2d55', '#5856d6', '#af52de', '#5ac8fa', '#e57373', '#ffc107', '#4dd0e1'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } } });
+
+            if (chartAportesInstance) chartAportesInstance.destroy();
+            chartAportesInstance = new Chart(document.getElementById('chart-aportes').getContext('2d'), { type: 'bar', data: { labels: ['Damián', 'Maxi'], datasets: [{ label: 'Gasto Común ($)', data: [pagaDami, pagaMaxi], backgroundColor: ['#0071e3', '#34c759'], borderRadius: 8 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
+
+            if (chartPrivadoInstance) chartPrivadoInstance.destroy();
+            chartPrivadoInstance = new Chart(document.getElementById('chart-categorias-privado').getContext('2d'), { type: 'doughnut', data: { labels: Object.keys(porCatPrivado), datasets: [{ data: Object.values(porCatPrivado), backgroundColor: ['#0071e3', '#34c759', '#ff9500', '#ff2d55', '#5856d6', '#af52de', '#5ac8fa', '#e57373', '#ffc107', '#4dd0e1'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } });
+        }
+
+        window.calcularDineroPersonalPrivado = function() {
+            if (!auth.currentUser) return;
+            const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
+            const userActivo = esDamian ? "Damian" : "Maxi";
+            const ingresoPropio = esDamian ? obtenerNumeroLimpio('sueldo-damian') : obtenerNumeroLimpio('sueldo-maxi');
+            const saldoAnterior = obtenerNumeroLimpio('saldo-anterior');
+            
+            let egresosCajaPropia = 0; let egresosTarjetaPropia = 0;
+
+            listaGastosGlobal.forEach(g => {
+                let pagadorFinanciero = g.pagadoPor;
+                if (g.formato === 'tarjeta' && g.medioId) {
+                    const tObj = listaTarjetasGlobal.find(t => t.id === g.medioId);
+                    if (tObj) pagadorFinanciero = tObj.tipo === 'extension' ? (tObj.titular === 'Dami' ? 'Maxi' : 'Damian') : (tObj.titular === 'Dami' ? 'Damian' : 'Maxi');
+                }
+
+                if (pagadorFinanciero === userActivo) {
+                    if (g.formato === 'efectivo' || g.formato === 'transferencia') { egresosCajaPropia += g.monto; } 
+                    else if (g.formato === 'tarjeta') { egresosTarjetaPropia += g.monto; }
+                }
+            });
+
+            document.getElementById('mis-gastos-totales').value = "$" + new Intl.NumberFormat('es-AR').format(egresosCajaPropia);
+            document.getElementById('mis-gastos-credito').value = "$" + new Intl.NumberFormat('es-AR').format(egresosTarjetaPropia);
+            const disponibleFinal = (saldoAnterior + ingresoPropio) - egresosCajaPropia;
+            document.getElementById('saldo-disponible-final').value = "$" + new Intl.NumberFormat('es-AR').format(disponibleFinal);
+        };
+    </script>
+
+    <!-- FORMATEO -->
+    <script>
+        function formatearMonedaEnVivo(input) { let s = input.value.replace(/\D/g, ''); input.value = s ? new Intl.NumberFormat('es-AR').format(parseInt(s, 10)) : ''; }
+        function obtenerNumeroLimpio(id) { let s = document.getElementById(id).value.replace(/\D/g, ''); return s ? parseInt(s, 10) : 0; }
+        document.querySelectorAll('.monto-input').forEach(input => {
+            input.addEventListener('input', (e) => {
+                formatearMonedaEnVivo(e.target);
+                if (e.target.id === 'sueldo-damian' || e.target.id === 'sueldo-maxi') { calcularProporcionAlquiler(); if (window.recalcularBalanceNeteado) window.recalcularBalanceNeteado(); }
+                if (window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+            });
+        });
+        function calcularProporcionAlquiler() {
+            const sD = obtenerNumeroLimpio('sueldo-damian'); const sM = obtenerNumeroLimpio('sueldo-maxi'); const t = sD + sM;
+            document.getElementById('proporcion-info').textContent = t > 0 ? `📊 Proporción alquiler: Damián ${((sD/t)*100).toFixed(1)}% | Maxi ${((sM/t)*100).toFixed(1)}%` : '📊 Proporción alquiler: Damián 0% | Maxi 0%';
+        }
+    </script>
+</body>
+</html>
