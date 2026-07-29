@@ -51,7 +51,7 @@
         button { background-color: var(--accent-color); color: white; border: none; padding: 14px 20px; border-radius: 12px; font-size: 15px; font-weight: 500; cursor: pointer; transition: background-color 0.2s ease; width: 100%; }
         button:hover { background-color: var(--accent-hover); } .btn-secundario { background-color: #e5e5ea; color: var(--text-primary); } .btn-secundario:hover { background-color: #d1d1d6; }
         .btn-accion-rapida { padding: 6px 12px; font-size: 12px; border-radius: 8px; width: auto; }
-        .btn-editar-icono { background: none; border: none; cursor: pointer; font-size: 14px; margin-left: 6px; opacity: 0.5; transition: opacity 0.2s; padding: 0; width: auto; display: inline-block; color: inherit; }
+        .btn-editar-icono { background: none; border: none; cursor: pointer; font-size: 14px; margin-left: 4px; opacity: 0.5; transition: opacity 0.2s; padding: 0; width: auto; display: inline-block; color: inherit; }
         .btn-editar-icono:hover { opacity: 1; transform: scale(1.1); }
 
         /* FILTROS DE TABLA */
@@ -479,6 +479,43 @@
             } catch (error) { alert("Error al actualizar el tipo de reparto."); }
         };
 
+        // ACTUALIZAR MEDIO DE PAGO DE UN GASTO DIRECTAMENTE DESDE LA TABLA
+        window.actualizarMedioGasto = async function(idGasto, valorSeleccionado) {
+            try {
+                let formato = 'efectivo';
+                let medioId = '';
+
+                if (valorSeleccionado.startsWith('tarjeta_')) {
+                    formato = 'tarjeta';
+                    medioId = valorSeleccionado.replace('tarjeta_', '');
+                } else if (valorSeleccionado.startsWith('cuenta_')) {
+                    formato = 'transferencia';
+                    medioId = valorSeleccionado.replace('cuenta_', '');
+                }
+
+                await updateDoc(doc(db, "gastos", idGasto), { formato: formato, medioId: medioId });
+            } catch (error) {
+                alert("Error al actualizar el medio de pago.");
+            }
+        };
+
+        // EDITAR PERÍODO DE IMPUTACIÓN DESDE EL LAPICITO DE CADA FILA
+        window.editarPeriodoImputacion = async function(idGasto) {
+            const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
+            if (!gastoObj) return;
+
+            const periodoActual = gastoObj.periodo || filtroMesInput.value;
+            const nuevoPeriodo = prompt("Modificá el período de imputación (Formato AAAA-MM, ej: 2026-09):", periodoActual);
+
+            if (nuevoPeriodo && nuevoPeriodo.trim() !== "" && nuevoPeriodo !== periodoActual) {
+                try {
+                    await updateDoc(doc(db, "gastos", idGasto), { periodo: nuevoPeriodo.trim() });
+                } catch (error) {
+                    alert("Error al actualizar el período de imputación. Usá el formato AAAA-MM.");
+                }
+            }
+        };
+
         window.editarConcepto = async function(idGasto) {
             const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
             if (!gastoObj) return;
@@ -743,7 +780,6 @@
                     const gasto = docSnap.data(); gasto.id = docSnap.id;
                     const fechaObj = gasto.fecha ? gasto.fecha.toDate() : new Date();
                     
-                    // LÓGICA DE FILTRADO POR PERÍODO DE IMPUTACIÓN
                     const periodoGasto = gasto.periodo ? gasto.periodo : fechaObj.toISOString().slice(0, 7);
 
                     if (periodoGasto === mesSeleccionado) {
@@ -751,20 +787,30 @@
                         const fechaFormateada = fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
                         const montoFormateado = new Intl.NumberFormat('es-AR').format(gasto.monto);
 
-                        let nombreMedioVisual = "";
                         let medioFiltroVal = gasto.medioId ? gasto.medioId : gasto.formato;
+                        let valorSeleccionadoActual = gasto.medioId ? `${gasto.formato === 'tarjeta' ? 'tarjeta_' : 'cuenta_'}${gasto.medioId}` : 'efectivo';
 
-                        if (gasto.formato === 'efectivo') { nombreMedioVisual = "💵 Efectivo"; medioFiltroVal = "efectivo"; }
-                        else if (gasto.formato === 'transferencia') {
-                            const cObj = listaCuentasGlobal.find(c => c.id === gasto.medioId);
-                            nombreMedioVisual = cObj ? `🏦 ${cObj.banco}` : '🏦 Transferencia';
-                        } else if (gasto.formato === 'tarjeta') {
-                            const tObj = listaTarjetasGlobal.find(t => t.id === gasto.medioId);
-                            nombreMedioVisual = tObj ? `💳 ${tObj.marca} (${tObj.tipo === 'extension' ? 'Ext' : 'Propia'})` : '💳 Tarjeta';
-                        }
+                        // DESPLEGABLE INTERACTIVO DE MEDIOS DE PAGO PARA TABLAS
+                        let selectMedioTablaHTML = `<select class="mini-select" onchange="actualizarMedioGasto('${gasto.id}', this.value)">`;
+                        selectMedioTablaHTML += `<option value="efectivo" ${valorSeleccionadoActual === 'efectivo' ? 'selected' : ''}>💵 Efectivo</option>`;
+                        
+                        listaTarjetasGlobal.forEach(t => {
+                            const val = `tarjeta_${t.id}`;
+                            const isSelected = (val === valorSeleccionadoActual) ? 'selected' : '';
+                            const desc = t.tipo === 'extension' ? 'Ext' : 'Propia';
+                            selectMedioTablaHTML += `<option value="${val}" ${isSelected}>💳 ${t.marca} (${desc})</option>`;
+                        });
+
+                        listaCuentasGlobal.forEach(c => {
+                            const val = `cuenta_${c.id}`;
+                            const isSelected = (val === valorSeleccionadoActual) ? 'selected' : '';
+                            selectMedioTablaHTML += `<option value="${val}" ${isSelected}>🏦 ${c.banco}</option>`;
+                        });
+                        selectMedioTablaHTML += `</select>`;
 
                         const botonEditarConcepto = `<button class="btn-editar-icono" title="Editar Concepto" onclick="editarConcepto('${gasto.id}')">✏️</button>`;
                         const botonEditarFecha = `<button class="btn-editar-icono" title="Editar Fecha" onclick="editarFecha('${gasto.id}')">✏️</button>`;
+                        const botonEditarPeriodo = `<button class="btn-editar-icono" title="Editar Período Imputación" onclick="editarPeriodoImputacion('${gasto.id}')">📅</button>`;
 
                         if (gasto.tipoReparto === 'comun' || gasto.tipoReparto === 'proporcional' || gasto.tipoReparto === 'devolucion') {
                             contadorComunes++;
@@ -778,9 +824,9 @@
                             tablaComunBody.innerHTML += `
                                 <tr data-concepto="${gasto.concepto.toLowerCase()}" data-categoria="${gasto.categoria}" data-medio="${medioFiltroVal}">
                                     <td>${fechaFormateada} ${botonEditarFecha}</td>
-                                    <td><strong>${gasto.concepto}</strong> ${botonEditarConcepto} <br><small style="color:var(--text-secondary);">${gasto.categoria}</small></td>
+                                    <td><strong>${gasto.concepto}</strong> ${botonEditarConcepto} ${botonEditarPeriodo}<br><small style="color:var(--text-secondary);">${gasto.categoria}</small></td>
                                     <td><span class="badge-pagado">${gasto.pagadoPor}</span></td>
-                                    <td><small>${nombreMedioVisual}</small></td>
+                                    <td>${selectMedioTablaHTML}</td>
                                     <td>${selectRepartoHTML}</td>
                                     <td><strong>$${montoFormateado}</strong></td>
                                     <td><button class="btn-eliminar" onclick="eliminarGasto('${gasto.id}')">🗑️</button></td>
@@ -805,10 +851,10 @@
                             tablaPrivadaBody.innerHTML += `
                                 <tr data-concepto="${gasto.concepto.toLowerCase()}" data-categoria="${gasto.categoria}" data-medio="${medioFiltroVal}">
                                     <td>${fechaFormateada} ${botonEditarFecha}</td>
-                                    <td><strong>${gasto.concepto}</strong> ${botonEditarConcepto}</td>
+                                    <td><strong>${gasto.concepto}</strong> ${botonEditarConcepto} ${botonEditarPeriodo}</td>
                                     <td>${selectRepartoPrivadoHTML}</td>
                                     <td>${selectCatHTML}</td>
-                                    <td><small>${nombreMedioVisual}</small></td>
+                                    <td>${selectMedioTablaHTML}</td>
                                     <td><strong>$${montoFormateado}</strong></td>
                                     <td><button class="btn-eliminar" onclick="eliminarGasto('${gasto.id}')">🗑️</button></td>
                                 </tr>`;
@@ -830,14 +876,13 @@
 
         window.eliminarGasto = async function(id) { if (confirm("¿Borrar este gasto o pago?")) await deleteDoc(doc(db, "gastos", id)); };
 
-        // GUARDAR GASTO MANUAL CON PERÍODO DE IMPUTACIÓN
         document.getElementById('form-gasto').addEventListener('submit', async (e) => {
             e.preventDefault();
             const concepto = document.getElementById('concepto').value;
             const montoLimpio = parseInt(document.getElementById('monto').value.replace(/\D/g, ''), 10);
             const formato = document.getElementById('formato-pago').value;
             const fechaManual = document.getElementById('fecha-manual').value;
-            const periodoImputacion = document.getElementById('periodo-imputacion').value; // Ej: "2026-09"
+            const periodoImputacion = document.getElementById('periodo-imputacion').value;
             const fechaGasto = new Date(fechaManual + "T12:00:00");
             
             let medioId = "";
@@ -972,7 +1017,7 @@
                     concepto: concepto, monto: monto, categoria: document.getElementById(`cat-borrador-${index}`).value,
                     pagadoPor: document.getElementById(`pagador-borrador-${index}`).value, tipoReparto: document.getElementById(`reparto-borrador-${index}`).value,
                     formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: new Date(),
-                    periodo: filtroMesInput.value // Asigna por defecto el período actualmente seleccionado en pantalla
+                    periodo: filtroMesInput.value
                 });
                 boton.parentElement.innerHTML = `<span style="color: var(--success-color); font-weight: bold;">✓ Agregado</span>`;
             } catch (error) { alert("Error al confirmar."); }
