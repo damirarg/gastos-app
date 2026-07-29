@@ -207,7 +207,7 @@
                 <section class="card">
                     <h2>Registrar Nuevo Gasto Manual 📝</h2>
                     <form id="form-gasto">
-                        <div class="grid-3">
+                        <div class="grid-4">
                             <div class="form-group">
                                 <label for="tipo-reparto">1. Tipo de Gasto</label>
                                 <select id="tipo-reparto">
@@ -218,6 +218,7 @@
                             </div>
                             <div class="form-group"><label for="categoria">2. Categoría</label><select id="categoria"></select></div>
                             <div class="form-group"><label for="fecha-manual">3. Fecha del Gasto</label><input type="date" id="fecha-manual" required></div>
+                            <div class="form-group"><label for="periodo-imputacion">4. Período Imputación</label><input type="month" id="periodo-imputacion" required></div>
                         </div>
 
                         <div class="grid-2">
@@ -358,10 +359,19 @@
         const seccionApp = document.getElementById('seccion-app');
         const formLogin = document.getElementById('form-login');
         const filtroMesInput = document.getElementById('filtro-mes');
+        const periodoImputacionInput = document.getElementById('periodo-imputacion');
 
         const hoy = new Date();
-        filtroMesInput.value = hoy.toISOString().slice(0, 7);
+        const mesActualStr = hoy.toISOString().slice(0, 7);
+        filtroMesInput.value = mesActualStr;
+        periodoImputacionInput.value = mesActualStr;
         document.getElementById('fecha-manual').value = hoy.toISOString().split('T')[0];
+
+        filtroMesInput.addEventListener('change', () => {
+            periodoImputacionInput.value = filtroMesInput.value;
+            escucharGastosEnTiempoReal();
+            cargarIngresosYsaldoDelMes();
+        });
 
         function obtenerNombreUsuario(email) {
             if (!email) return "Usuario";
@@ -406,7 +416,6 @@
             boton.classList.add('activo');
         };
 
-        // DICCIONARIO DE CATEGORÍAS (CON FARMACIA AGREGADA)
         const categoriasPorTipo = {
             proporcional: ['🏠 Alquiler'],
             comun: ['🛒 Supermercado', '💊 Farmacia', '💡 Luz', '🔥 Gas', '🌐 Internet', '💧 Agua', '🏠 Seguro Casa', '🧹 Servicio Doméstico', '🏊‍♂️ Servicio Pileta', '🧪 Insumos Pileta', '🐈 Mascotas', '🛠️ Reparaciones Casa', '🍷 Salidas/Ocio'],
@@ -658,9 +667,11 @@
             const sD = parseInt(document.getElementById('sueldo-damian').value.replace(/\D/g, '') || 0);
             const sM = parseInt(document.getElementById('sueldo-maxi').value.replace(/\D/g, '') || 0);
             try {
-                const btn = document.getElementById('btn-guardar-ingresos'); btn.textContent = "Guardando..."; btn.disabled = true;
+                const btn = document.getElementById('btn-guardar-ingresos');
+                btn.textContent = "Guardando..."; btn.disabled = true;
                 await setDoc(doc(db, "ingresos", mes), { sueldoDamian: sD, sueldoMaxi: sM }, { merge: true });
-                btn.textContent = "✓ Guardado"; setTimeout(() => { btn.textContent = "💾 Guardar Ingresos"; btn.disabled = false; }, 2000);
+                btn.textContent = "✓ Guardado"; 
+                setTimeout(() => { btn.textContent = "💾 Guardar Ingresos"; btn.disabled = false; }, 2000);
             } catch (error) { alert("Error al guardar ingresos."); }
         });
 
@@ -668,12 +679,18 @@
             const mes = filtroMesInput.value;
             const saldoLimpio = parseInt(document.getElementById('saldo-anterior').value.replace(/\D/g, '') || 0, 10);
             const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
-            const btn = document.getElementById('btn-guardar-saldo'); btn.textContent = "⏳"; btn.disabled = true;
+            
+            const btn = document.getElementById('btn-guardar-saldo');
+            btn.textContent = "⏳"; btn.disabled = true;
 
             try {
-                if (esDamian) { await setDoc(doc(db, "ingresos", mes), { saldoDamian: saldoLimpio }, { merge: true }); } 
-                else { await setDoc(doc(db, "ingresos", mes), { saldoMaxi: saldoLimpio }, { merge: true }); }
-                btn.textContent = "✓"; setTimeout(() => { btn.textContent = "💾"; btn.disabled = false; }, 2000);
+                if (esDamian) {
+                    await setDoc(doc(db, "ingresos", mes), { saldoDamian: saldoLimpio }, { merge: true });
+                } else {
+                    await setDoc(doc(db, "ingresos", mes), { saldoMaxi: saldoLimpio }, { merge: true });
+                }
+                btn.textContent = "✓"; 
+                setTimeout(() => { btn.textContent = "💾"; btn.disabled = false; }, 2000);
             } catch (error) { alert("Error al guardar saldo."); btn.textContent = "💾"; btn.disabled = false; }
         });
 
@@ -694,6 +711,7 @@
             const montoLimpio = parseInt(document.getElementById('saldar-monto').value.replace(/\D/g, ''), 10);
             const medio = document.getElementById('saldar-medio').value;
             const fechaIngresada = new Date(document.getElementById('saldar-fecha').value + "T12:00:00");
+            const periodoActual = filtroMesInput.value;
 
             if (!montoLimpio || montoLimpio <= 0) return;
 
@@ -701,14 +719,12 @@
                 await addDoc(collection(db, "gastos"), {
                     concepto: "Liquidación de saldos del mes", monto: montoLimpio, categoria: "Liquidación",
                     pagadoPor: window.estadoDeudaActual.deudor, tipoReparto: "devolucion", formato: medio,
-                    medioId: "", usuarioCreador: auth.currentUser.email, fecha: fechaIngresada
+                    medioId: "", usuarioCreador: auth.currentUser.email, fecha: fechaIngresada, periodo: periodoActual
                 });
                 document.getElementById('form-saldar-deuda').reset();
                 document.getElementById('contenedor-saldar-deuda').classList.add('oculto');
             } catch (error) { alert("Error al registrar el pago de la deuda."); }
         });
-
-        filtroMesInput.addEventListener('change', () => { escucharGastosEnTiempoReal(); cargarIngresosYsaldoDelMes(); });
 
         function escucharGastosEnTiempoReal() {
             const q = query(collection(db, "gastos"), orderBy("fecha", "desc"));
@@ -727,7 +743,10 @@
                     const gasto = docSnap.data(); gasto.id = docSnap.id;
                     const fechaObj = gasto.fecha ? gasto.fecha.toDate() : new Date();
                     
-                    if (fechaObj.toISOString().slice(0, 7) === mesSeleccionado) {
+                    // LÓGICA DE FILTRADO POR PERÍODO DE IMPUTACIÓN
+                    const periodoGasto = gasto.periodo ? gasto.periodo : fechaObj.toISOString().slice(0, 7);
+
+                    if (periodoGasto === mesSeleccionado) {
                         listaGastosGlobal.push(gasto);
                         const fechaFormateada = fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
                         const montoFormateado = new Intl.NumberFormat('es-AR').format(gasto.monto);
@@ -811,12 +830,14 @@
 
         window.eliminarGasto = async function(id) { if (confirm("¿Borrar este gasto o pago?")) await deleteDoc(doc(db, "gastos", id)); };
 
+        // GUARDAR GASTO MANUAL CON PERÍODO DE IMPUTACIÓN
         document.getElementById('form-gasto').addEventListener('submit', async (e) => {
             e.preventDefault();
             const concepto = document.getElementById('concepto').value;
             const montoLimpio = parseInt(document.getElementById('monto').value.replace(/\D/g, ''), 10);
             const formato = document.getElementById('formato-pago').value;
             const fechaManual = document.getElementById('fecha-manual').value;
+            const periodoImputacion = document.getElementById('periodo-imputacion').value; // Ej: "2026-09"
             const fechaGasto = new Date(fechaManual + "T12:00:00");
             
             let medioId = "";
@@ -829,10 +850,12 @@
                 await addDoc(collection(db, "gastos"), {
                     concepto: concepto, monto: montoLimpio, categoria: document.getElementById('categoria').value,
                     pagadoPor: document.getElementById('pagado-por').value, tipoReparto: document.getElementById('tipo-reparto').value,
-                    formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: fechaGasto
+                    formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, 
+                    fecha: fechaGasto, periodo: periodoImputacion
                 });
                 document.getElementById('form-gasto').reset();
                 document.getElementById('fecha-manual').value = new Date().toISOString().split('T')[0];
+                document.getElementById('periodo-imputacion').value = filtroMesInput.value;
                 actualizarCategoriasManuales(); actualizarFiltrosMedioPago();
             } catch (e) { alert("Error al confirmar el gasto."); }
         });
@@ -948,7 +971,8 @@
                 await addDoc(collection(db, "gastos"), {
                     concepto: concepto, monto: monto, categoria: document.getElementById(`cat-borrador-${index}`).value,
                     pagadoPor: document.getElementById(`pagador-borrador-${index}`).value, tipoReparto: document.getElementById(`reparto-borrador-${index}`).value,
-                    formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: new Date()
+                    formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: new Date(),
+                    periodo: filtroMesInput.value // Asigna por defecto el período actualmente seleccionado en pantalla
                 });
                 boton.parentElement.innerHTML = `<span style="color: var(--success-color); font-weight: bold;">✓ Agregado</span>`;
             } catch (error) { alert("Error al confirmar."); }
