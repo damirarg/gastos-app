@@ -51,25 +51,32 @@
         button { background-color: var(--accent-color); color: white; border: none; padding: 14px 20px; border-radius: 12px; font-size: 15px; font-weight: 500; cursor: pointer; transition: background-color 0.2s ease; width: 100%; }
         button:hover { background-color: var(--accent-hover); } .btn-secundario { background-color: #e5e5ea; color: var(--text-primary); } .btn-secundario:hover { background-color: #d1d1d6; }
         .btn-accion-rapida { padding: 6px 12px; font-size: 12px; border-radius: 8px; width: auto; }
-        .btn-editar-icono { background: none; border: none; cursor: pointer; font-size: 14px; margin-left: 4px; opacity: 0.5; transition: opacity 0.2s; padding: 0; width: auto; display: inline-block; color: inherit; }
-        .btn-editar-icono:hover { opacity: 1; transform: scale(1.1); }
+        .btn-editar-icono { background: none; border: none; cursor: pointer; font-size: 15px; opacity: 0.6; transition: opacity 0.2s, transform 0.2s; padding: 2px 4px; width: auto; display: inline-block; color: inherit; }
+        .btn-editar-icono:hover { opacity: 1; transform: scale(1.2); }
 
-        /* FILTROS DE TABLA */
-        .filtros-tabla { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; background: #fafafa; padding: 12px; border-radius: 12px; border: 1px solid var(--border-color); }
-        .filtro-input { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 13px; flex: 1; min-width: 150px; outline: none; background-color: #fff; }
+        /* MODAL PERSONALIZADO */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 2000; }
+        .modal-card { background: #fff; border-radius: 20px; padding: 24px; width: 100%; max-width: 360px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align: center; }
+
+        /* FILTROS Y ACCIONES MASIVAS */
+        .filtros-tabla { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; background: #fafafa; padding: 12px; border-radius: 12px; border: 1px solid var(--border-color); align-items: center; }
+        .filtro-input { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 13px; flex: 1; min-width: 140px; outline: none; background-color: #fff; }
         .filtro-input:focus { border-color: var(--accent-color); }
+        .barra-acciones-masivas { display: flex; gap: 8px; align-items: center; background: #eef7ff; padding: 10px 14px; border-radius: 12px; border: 1px solid #b8e1ff; margin-bottom: 12px; }
 
         /* TABLAS Y MÉTRICAS */
         .balance-box { background-color: #f0f8ff; border-radius: 14px; padding: 20px; border: 1px solid #b8e1ff; margin-top: 12px; position: relative; }
         .balance-text { font-size: 18px; font-weight: 600; color: #004085; margin-bottom: 8px; } .balance-subtext { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; }
         .tabla-wrapper { overflow-x: auto; margin-top: 10px; } table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; } th { background-color: #fafafa; color: var(--text-secondary); font-weight: 600; padding: 12px 14px; border-bottom: 1px solid var(--border-color); } td { padding: 10px 12px; border-bottom: 1px solid #f0f0f2; vertical-align: middle; } tr:hover td { background-color: #fcfcfd; }
         .badge-pagado { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background-color: #e3f2fd; color: #0d47a1; }
-        .btn-eliminar { background: none; border: none; color: var(--danger-color); cursor: pointer; font-size: 16px; padding: 4px 8px; border-radius: 6px; }
+        .btn-eliminar { background: none; border: none; color: var(--danger-color); cursor: pointer; font-size: 16px; padding: 2px 4px; border-radius: 6px; }
         .info-proporcion { font-size: 14px; font-weight: 500; color: var(--accent-color); margin-top: 10px; background-color: #eef7ff; padding: 10px 14px; border-radius: 10px; display: inline-block; }
         .tarjeta-item { background: #fff; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         select.mini-select { padding: 6px 10px; font-size: 12px; border-radius: 8px; width: 100%; max-width: 150px; }
         .metric-card { background: #fafafa; border-radius: 14px; padding: 16px 20px; border: 1px solid var(--border-color); text-align: center; } .metric-val { font-size: 22px; font-weight: 700; color: var(--text-primary); margin-top: 4px; }
         .chart-container { position: relative; max-height: 260px; margin-top: 16px; }
+        .acciones-celda { display: flex; gap: 4px; align-items: center; }
+        .chk-tabla { width: 18px; height: 18px; cursor: pointer; }
 
         @media (max-width: 768px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } header { flex-direction: column; gap: 12px; text-align: center; } }
     </style>
@@ -88,6 +95,19 @@
                 <button type="submit">Ingresar a la App</button>
             </form>
         </section>
+    </div>
+
+    <!-- MODAL REIMPUTAR PERÍODO (INDIVIDUAL O MASIVO) -->
+    <div id="modal-reimputar" class="modal-overlay oculto">
+        <div class="modal-card">
+            <h3 style="font-size: 17px; margin-bottom: 8px;">Reimputar Período 📅</h3>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Seleccioná el mes y año al que querés mover el/los gastos:</p>
+            <input type="month" id="modal-nuevo-periodo" style="width: 100%; margin-bottom: 20px; text-align: center;">
+            <div style="display: flex; gap: 10px;">
+                <button type="button" class="btn-secundario" onclick="cerrarModalReimputar()">Cancelar</button>
+                <button type="button" onclick="confirmarReimputacionModal()">Confirmar</button>
+            </div>
+        </div>
     </div>
 
     <!-- PANEL PRINCIPAL -->
@@ -164,11 +184,24 @@
                         <select id="medio-comun" class="filtro-input" onchange="filtrarTabla('tabla-gastos-body', 'search-comun', 'cat-comun', 'medio-comun')">
                             <option value="">Todos los medios de pago</option>
                         </select>
+                        <button type="button" class="btn-secundario" style="width: auto; padding: 8px 14px; font-size: 13px;" onclick="toggleModoSeleccion('comun')">☑️ Seleccionar</button>
+                    </div>
+
+                    <!-- BARRA FLOTANTE DE ACCIONES MASIVAS -->
+                    <div id="barra-masiva-comun" class="barra-acciones-masivas oculto">
+                        <span style="font-size: 13px; font-weight: 600;">Acciones masivas:</span>
+                        <button type="button" class="btn-secundario" style="width: auto; padding: 6px 12px; font-size: 12px;" onclick="abrirModalReimputarMasivo('comun')">📅 Reimputar Seleccionados</button>
+                        <button type="button" style="background-color: var(--danger-color); width: auto; padding: 6px 12px; font-size: 12px;" onclick="ejecutarEliminacionMasiva('comun')">🗑️ Borrar Seleccionados</button>
                     </div>
 
                     <div class="tabla-wrapper">
                         <table id="tabla-gastos-comunes">
-                            <thead><tr><th>Fecha</th><th>Concepto</th><th>Consumió</th><th>Tarjeta / Medio</th><th>Reparto</th><th>Monto</th><th>Acción</th></tr></thead>
+                            <thead>
+                                <tr>
+                                    <th class="col-chk oculto"><input type="checkbox" class="chk-tabla" onclick="toggleSeleccionarTodos('tabla-gastos-body', this.checked)"></th>
+                                    <th>Fecha</th><th>Concepto</th><th>Consumió</th><th>Tarjeta / Medio</th><th>Reparto</th><th>Monto</th><th>Acción</th>
+                                </tr>
+                            </thead>
                             <tbody id="tabla-gastos-body"><tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">Cargando gastos comunes...</td></tr></tbody>
                         </table>
                     </div>
@@ -290,11 +323,24 @@
                             <select id="medio-privado" class="filtro-input" onchange="filtrarTabla('tabla-gastos-privados-body', 'search-privado', 'cat-privado', 'medio-privado')">
                                 <option value="">Todos los medios de pago</option>
                             </select>
+                            <button type="button" class="btn-secundario" style="width: auto; padding: 8px 14px; font-size: 13px;" onclick="toggleModoSeleccion('privado')">☑️ Seleccionar</button>
+                        </div>
+
+                        <!-- BARRA FLOTANTE DE ACCIONES MASIVAS PRIVADAS -->
+                        <div id="barra-masiva-privado" class="barra-acciones-masivas oculto">
+                            <span style="font-size: 13px; font-weight: 600;">Acciones masivas:</span>
+                            <button type="button" class="btn-secundario" style="width: auto; padding: 6px 12px; font-size: 12px;" onclick="abrirModalReimputarMasivo('privado')">📅 Reimputar Seleccionados</button>
+                            <button type="button" style="background-color: var(--danger-color); width: auto; padding: 6px 12px; font-size: 12px;" onclick="ejecutarEliminacionMasiva('privado')">🗑️ Borrar Seleccionados</button>
                         </div>
 
                         <div class="tabla-wrapper">
                             <table id="tabla-gastos-privados">
-                                <thead><tr><th>Fecha</th><th>Concepto</th><th>Reparto</th><th>Categoría</th><th>Medio / Tarjeta</th><th>Monto</th><th>Acción</th></tr></thead>
+                                <thead>
+                                    <tr>
+                                        <th class="col-chk oculto"><input type="checkbox" class="chk-tabla" onclick="toggleSeleccionarTodos('tabla-gastos-privados-body', this.checked)"></th>
+                                        <th>Fecha</th><th>Concepto</th><th>Reparto</th><th>Categoría</th><th>Medio / Tarjeta</th><th>Monto</th><th>Acción</th>
+                                    </tr>
+                                </thead>
                                 <tbody id="tabla-gastos-privados-body">
                                     <tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">Cargando mis gastos...</td></tr>
                                 </tbody>
@@ -381,6 +427,10 @@
         let listaGastosGlobal = [];
         let listaTarjetasGlobal = [];
         let listaCuentasGlobal = [];
+        let idGastoEnEdicionPeriodo = null;
+        let esEdicionMasiva = false;
+        let modoSeleccionActivoComun = false;
+        let modoSeleccionActivoPrivado = false;
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -479,7 +529,6 @@
             } catch (error) { alert("Error al actualizar el tipo de reparto."); }
         };
 
-        // ACTUALIZAR MEDIO DE PAGO DE UN GASTO DIRECTAMENTE DESDE LA TABLA
         window.actualizarMedioGasto = async function(idGasto, valorSeleccionado) {
             try {
                 let formato = 'efectivo';
@@ -494,26 +543,102 @@
                 }
 
                 await updateDoc(doc(db, "gastos", idGasto), { formato: formato, medioId: medioId });
-            } catch (error) {
-                alert("Error al actualizar el medio de pago.");
-            }
+            } catch (error) { alert("Error al actualizar el medio de pago."); }
         };
 
-        // EDITAR PERÍODO DE IMPUTACIÓN DESDE EL LAPICITO DE CADA FILA
-        window.editarPeriodoImputacion = async function(idGasto) {
+        // LÓGICA DE REIMPUTACIÓN CON MODAL (INDIVIDUAL Y MASIVA)
+        window.editarPeriodoImputacion = function(idGasto) {
             const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
             if (!gastoObj) return;
 
-            const periodoActual = gastoObj.periodo || filtroMesInput.value;
-            const nuevoPeriodo = prompt("Modificá el período de imputación (Formato AAAA-MM, ej: 2026-09):", periodoActual);
+            esEdicionMasiva = false;
+            idGastoEnEdicionPeriodo = idGasto;
+            document.getElementById('modal-nuevo-periodo').value = gastoObj.periodo || filtroMesInput.value;
+            document.getElementById('modal-reimputar').classList.remove('oculto');
+        };
 
-            if (nuevoPeriodo && nuevoPeriodo.trim() !== "" && nuevoPeriodo !== periodoActual) {
-                try {
-                    await updateDoc(doc(db, "gastos", idGasto), { periodo: nuevoPeriodo.trim() });
-                } catch (error) {
-                    alert("Error al actualizar el período de imputación. Usá el formato AAAA-MM.");
-                }
+        window.abrirModalReimputarMasivo = function(origen) {
+            const idBody = origen === 'comun' ? 'tabla-gastos-body' : 'tabla-gastos-privados-body';
+            const seleccionados = document.querySelectorAll(`#${idBody} .chk-item:checked`);
+
+            if (seleccionados.length === 0) {
+                alert("Por favor, tildá al menos un gasto para reimputar.");
+                return;
             }
+
+            esEdicionMasiva = true;
+            document.getElementById('modal-nuevo-periodo').value = filtroMesInput.value;
+            document.getElementById('modal-reimputar').classList.remove('oculto');
+        };
+
+        window.cerrarModalReimputar = function() {
+            idGastoEnEdicionPeriodo = null;
+            esEdicionMasiva = false;
+            document.getElementById('modal-reimputar').classList.add('oculto');
+        };
+
+        window.confirmarReimputacionModal = async function() {
+            const nuevoPeriodo = document.getElementById('modal-nuevo-periodo').value;
+            if (!nuevoPeriodo) return;
+
+            if (esEdicionMasiva) {
+                const seleccionadosComun = document.querySelectorAll('#tabla-gastos-body .chk-item:checked');
+                const seleccionadosPriv = document.querySelectorAll('#tabla-gastos-privados-body .chk-item:checked');
+                const todos = [...seleccionadosComun, ...seleccionadosPriv];
+
+                try {
+                    for (let chk of todos) {
+                        const idGasto = chk.value;
+                        await updateDoc(doc(db, "gastos", idGasto), { periodo: nuevoPeriodo });
+                    }
+                    cerrarModalReimputar();
+                } catch (error) { alert("Error al procesar la reimputación masiva."); }
+            } else if (idGastoEnEdicionPeriodo) {
+                try {
+                    await updateDoc(doc(db, "gastos", idGastoEnEdicionPeriodo), { periodo: nuevoPeriodo });
+                    cerrarModalReimputar();
+                } catch (error) { alert("Error al actualizar el período."); }
+            }
+        };
+
+        // ELIMINACIÓN MASIVA
+        window.ejecutarEliminacionMasiva = async function(origen) {
+            const idBody = origen === 'comun' ? 'tabla-gastos-body' : 'tabla-gastos-privados-body';
+            const seleccionados = document.querySelectorAll(`#${idBody} .chk-item:checked`);
+
+            if (seleccionados.length === 0) {
+                alert("Por favor, tildá al menos un gasto para eliminar.");
+                return;
+            }
+
+            if (confirm(`¿Estás seguro de que querés borrar permanentemente los ${seleccionados.length} gastos seleccionados?`)) {
+                try {
+                    for (let chk of seleccionados) {
+                        await deleteDoc(doc(db, "gastos", chk.value));
+                    }
+                } catch (error) { alert("Error al eliminar los gastos seleccionados."); }
+            }
+        };
+
+        // MODO SELECCIÓN INTERACTIVA
+        window.toggleModoSeleccion = function(origen) {
+            if (origen === 'comun') {
+                modoSeleccionActivoComun = !modoSeleccionActivoComun;
+                document.querySelectorAll('#tabla-gastos-comunes .col-chk').forEach(el => el.classList.toggle('oculto', !modoSeleccionActivoComun));
+                document.getElementById('barra-masiva-comun').classList.toggle('oculto', !modoSeleccionActivoComun);
+            } else {
+                modoSeleccionActivoPrivado = !modoSeleccionActivoPrivado;
+                document.querySelectorAll('#tabla-gastos-privados .col-chk').forEach(el => el.classList.toggle('oculto', !modoSeleccionActivoPrivado));
+                document.getElementById('barra-masiva-privado').classList.toggle('oculto', !modoSeleccionActivoPrivado);
+            }
+        };
+
+        window.toggleSeleccionarTodos = function(idBody, estaMarcado) {
+            document.querySelectorAll(`#${idBody} .chk-item`).forEach(chk => {
+                if (chk.parentElement.parentElement.style.display !== 'none') {
+                    chk.checked = estaMarcado;
+                }
+            });
         };
 
         window.editarConcepto = async function(idGasto) {
@@ -523,29 +648,6 @@
             if (nuevoConcepto !== null && nuevoConcepto.trim() !== "" && nuevoConcepto !== gastoObj.concepto) {
                 try { await updateDoc(doc(db, "gastos", idGasto), { concepto: nuevoConcepto.trim() }); } 
                 catch (error) { alert("Error al actualizar el concepto."); }
-            }
-        };
-
-        window.editarFecha = async function(idGasto) {
-            const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
-            if (!gastoObj) return;
-
-            const fechaObj = gastoObj.fecha ? gastoObj.fecha.toDate() : new Date();
-            const dia = String(fechaObj.getDate()).padStart(2, '0');
-            const mes = String(fechaObj.getMonth() + 1).padStart(2, '0');
-            const anio = fechaObj.getFullYear();
-            const fechaActualFormat = `${anio}-${mes}-${dia}`; 
-
-            const nuevaFecha = prompt("Modificá la fecha del consumo (Formato AAAA-MM-DD):", fechaActualFormat);
-            
-            if (nuevaFecha && nuevaFecha.trim() !== "" && nuevaFecha !== fechaActualFormat) {
-                try {
-                    const [y, m, d] = nuevaFecha.split('-');
-                    const nuevaFechaObj = new Date(y, m - 1, d, 12, 0, 0); 
-                    await updateDoc(doc(db, "gastos", idGasto), { fecha: nuevaFechaObj });
-                } catch (error) {
-                    alert("Error al actualizar la fecha. Asegurate de usar guiones (AAAA-MM-DD).");
-                }
             }
         };
 
@@ -790,7 +892,6 @@
                         let medioFiltroVal = gasto.medioId ? gasto.medioId : gasto.formato;
                         let valorSeleccionadoActual = gasto.medioId ? `${gasto.formato === 'tarjeta' ? 'tarjeta_' : 'cuenta_'}${gasto.medioId}` : 'efectivo';
 
-                        // DESPLEGABLE INTERACTIVO DE MEDIOS DE PAGO PARA TABLAS
                         let selectMedioTablaHTML = `<select class="mini-select" onchange="actualizarMedioGasto('${gasto.id}', this.value)">`;
                         selectMedioTablaHTML += `<option value="efectivo" ${valorSeleccionadoActual === 'efectivo' ? 'selected' : ''}>💵 Efectivo</option>`;
                         
@@ -808,9 +909,16 @@
                         });
                         selectMedioTablaHTML += `</select>`;
 
-                        const botonEditarConcepto = `<button class="btn-editar-icono" title="Editar Concepto" onclick="editarConcepto('${gasto.id}')">✏️</button>`;
-                        const botonEditarFecha = `<button class="btn-editar-icono" title="Editar Fecha" onclick="editarFecha('${gasto.id}')">✏️</button>`;
-                        const botonEditarPeriodo = `<button class="btn-editar-icono" title="Editar Período Imputación" onclick="editarPeriodoImputacion('${gasto.id}')">📅</button>`;
+                        const accionesHTML = `
+                            <div class="acciones-celda">
+                                <button class="btn-editar-icono" title="Reimputar período" onclick="editarPeriodoImputacion('${gasto.id}')">📅</button>
+                                <button class="btn-editar-icono" title="Editar concepto" onclick="editarConcepto('${gasto.id}')">✏️</button>
+                                <button class="btn-eliminar" title="Eliminar gasto" onclick="eliminarGasto('${gasto.id}')">🗑️</button>
+                            </div>
+                        `;
+
+                        const colChkComun = `<td class="col-chk ${modoSeleccionActivoComun ? '' : 'oculto'}"><input type="checkbox" class="chk-tabla chk-item" value="${gasto.id}"></td>`;
+                        const colChkPriv = `<td class="col-chk ${modoSeleccionActivoPrivado ? '' : 'oculto'}"><input type="checkbox" class="chk-tabla chk-item" value="${gasto.id}"></td>`;
 
                         if (gasto.tipoReparto === 'comun' || gasto.tipoReparto === 'proporcional' || gasto.tipoReparto === 'devolucion') {
                             contadorComunes++;
@@ -823,13 +931,14 @@
 
                             tablaComunBody.innerHTML += `
                                 <tr data-concepto="${gasto.concepto.toLowerCase()}" data-categoria="${gasto.categoria}" data-medio="${medioFiltroVal}">
-                                    <td>${fechaFormateada} ${botonEditarFecha}</td>
-                                    <td><strong>${gasto.concepto}</strong> ${botonEditarConcepto} ${botonEditarPeriodo}<br><small style="color:var(--text-secondary);">${gasto.categoria}</small></td>
+                                    ${colChkComun}
+                                    <td>${fechaFormateada}</td>
+                                    <td><strong>${gasto.concepto}</strong> <br><small style="color:var(--text-secondary);">${gasto.categoria}</small></td>
                                     <td><span class="badge-pagado">${gasto.pagadoPor}</span></td>
                                     <td>${selectMedioTablaHTML}</td>
                                     <td>${selectRepartoHTML}</td>
                                     <td><strong>$${montoFormateado}</strong></td>
-                                    <td><button class="btn-eliminar" onclick="eliminarGasto('${gasto.id}')">🗑️</button></td>
+                                    <td>${accionesHTML}</td>
                                 </tr>`;
                         }
 
@@ -850,20 +959,21 @@
 
                             tablaPrivadaBody.innerHTML += `
                                 <tr data-concepto="${gasto.concepto.toLowerCase()}" data-categoria="${gasto.categoria}" data-medio="${medioFiltroVal}">
-                                    <td>${fechaFormateada} ${botonEditarFecha}</td>
-                                    <td><strong>${gasto.concepto}</strong> ${botonEditarConcepto} ${botonEditarPeriodo}</td>
+                                    ${colChkPriv}
+                                    <td>${fechaFormateada}</td>
+                                    <td><strong>${gasto.concepto}</strong></td>
                                     <td>${selectRepartoPrivadoHTML}</td>
                                     <td>${selectCatHTML}</td>
                                     <td>${selectMedioTablaHTML}</td>
                                     <td><strong>$${montoFormateado}</strong></td>
-                                    <td><button class="btn-eliminar" onclick="eliminarGasto('${gasto.id}')">🗑️</button></td>
+                                    <td>${accionesHTML}</td>
                                 </tr>`;
                         }
                     }
                 });
 
-                if (contadorComunes === 0) tablaComunBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">No hay gastos comunes o liquidaciones registradas.</td></tr>`;
-                if (contadorPrivados === 0) tablaPrivadaBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">No tenés gastos personales registrados.</td></tr>`;
+                if (contadorComunes === 0) tablaComunBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No hay gastos comunes o liquidaciones registradas.</td></tr>`;
+                if (contadorPrivados === 0) tablaPrivadaBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No tenés gastos personales registrados.</td></tr>`;
 
                 filtrarTabla('tabla-gastos-body', 'search-comun', 'cat-comun', 'medio-comun');
                 filtrarTabla('tabla-gastos-privados-body', 'search-privado', 'cat-privado', 'medio-privado');
