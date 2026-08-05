@@ -187,7 +187,6 @@
                         <button type="button" class="btn-secundario" style="width: auto; padding: 8px 14px; font-size: 13px;" onclick="toggleModoSeleccion('comun')">☑️ Seleccionar</button>
                     </div>
 
-                    <!-- BARRA FLOTANTE DE ACCIONES MASIVAS -->
                     <div id="barra-masiva-comun" class="barra-acciones-masivas oculto">
                         <span style="font-size: 13px; font-weight: 600;">Acciones masivas:</span>
                         <button type="button" class="btn-secundario" style="width: auto; padding: 6px 12px; font-size: 12px;" onclick="abrirModalReimputarMasivo('comun')">📅 Reimputar Seleccionados</button>
@@ -326,7 +325,6 @@
                             <button type="button" class="btn-secundario" style="width: auto; padding: 8px 14px; font-size: 13px;" onclick="toggleModoSeleccion('privado')">☑️ Seleccionar</button>
                         </div>
 
-                        <!-- BARRA FLOTANTE DE ACCIONES MASIVAS PRIVADAS -->
                         <div id="barra-masiva-privado" class="barra-acciones-masivas oculto">
                             <span style="font-size: 13px; font-weight: 600;">Acciones masivas:</span>
                             <button type="button" class="btn-secundario" style="width: auto; padding: 6px 12px; font-size: 12px;" onclick="abrirModalReimputarMasivo('privado')">📅 Reimputar Seleccionados</button>
@@ -466,8 +464,8 @@
             boton.classList.add('activo');
         };
 
-        // LISTA ÚNICA Y COMPLETA DE CATEGORÍAS
-        const categoriasUnificadas = [
+        // CATEGORÍAS COMPLETAS Y UNIFICADAS (CON PUCHOS EN GASTOS PRIVADOS)
+        const categoriasBase = [
             '🛒 Supermercado', '💊 Farmacia', '💡 Luz', '🔥 Gas', '🌐 Internet', '💧 Agua', 
             '🏠 Seguro Casa', '🧹 Servicio Doméstico', '🏊‍♂️ Servicio Pileta', '🧪 Insumos Pileta', 
             '🐈 Mascotas', '🛠️ Reparaciones Casa', '🍷 Salidas/Ocio', '⚕️ Obra Social', 
@@ -477,8 +475,8 @@
 
         const categoriasPorTipo = {
             proporcional: ['🏠 Alquiler'],
-            comun: categoriasUnificadas,
-            privado: categoriasUnificadas
+            comun: categoriasBase,
+            privado: ['🚬 Puchos', ...categoriasBase] // Puchos agregado a Gastos Personales
         };
 
         function inicializarSelectoresFiltro() {
@@ -555,7 +553,6 @@
             } catch (error) { alert("Error al actualizar el medio de pago."); }
         };
 
-        // LÓGICA DE REIMPUTACIÓN CON MODAL
         window.editarPeriodoImputacion = function(idGasto) {
             const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
             if (!gastoObj) return;
@@ -610,7 +607,6 @@
             }
         };
 
-        // ELIMINACIÓN MASIVA
         window.ejecutarEliminacionMasiva = async function(origen) {
             const idBody = origen === 'comun' ? 'tabla-gastos-body' : 'tabla-gastos-privados-body';
             const seleccionados = document.querySelectorAll(`#${idBody} .chk-item:checked`);
@@ -629,7 +625,6 @@
             }
         };
 
-        // MODO SELECCIÓN INTERACTIVA
         window.toggleModoSeleccion = function(origen) {
             if (origen === 'comun') {
                 modoSeleccionActivoComun = !modoSeleccionActivoComun;
