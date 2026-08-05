@@ -97,7 +97,7 @@
         </section>
     </div>
 
-    <!-- MODAL REIMPUTAR PERÍODO (INDIVIDUAL O MASIVO) -->
+    <!-- MODAL REIMPUTAR PERÍODO -->
     <div id="modal-reimputar" class="modal-overlay oculto">
         <div class="modal-card">
             <h3 style="font-size: 17px; margin-bottom: 8px;">Reimputar Período 📅</h3>
@@ -202,7 +202,7 @@
                                     <th>Fecha</th><th>Concepto</th><th>Consumió</th><th>Tarjeta / Medio</th><th>Reparto</th><th>Monto</th><th>Acción</th>
                                 </tr>
                             </thead>
-                            <tbody id="tabla-gastos-body"><tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">Cargando gastos comunes...</td></tr></tbody>
+                            <tbody id="tabla-gastos-body"><tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">Cargando gastos comunes...</td></tr></tbody>
                         </table>
                     </div>
                 </section>
@@ -342,7 +342,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="tabla-gastos-privados-body">
-                                    <tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">Cargando mis gastos...</td></tr>
+                                    <tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">Cargando mis gastos...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -466,10 +466,19 @@
             boton.classList.add('activo');
         };
 
+        // LISTA ÚNICA Y COMPLETA DE CATEGORÍAS
+        const categoriasUnificadas = [
+            '🛒 Supermercado', '💊 Farmacia', '💡 Luz', '🔥 Gas', '🌐 Internet', '💧 Agua', 
+            '🏠 Seguro Casa', '🧹 Servicio Doméstico', '🏊‍♂️ Servicio Pileta', '🧪 Insumos Pileta', 
+            '🐈 Mascotas', '🛠️ Reparaciones Casa', '🍷 Salidas/Ocio', '⚕️ Obra Social', 
+            '👕 Vestimenta', '✂️ Peluquería', '⛽ Combustible', '🚗 Seguro Auto', 
+            '🔧 Service Auto', '📄 Patente', '🛍️ Varios'
+        ];
+
         const categoriasPorTipo = {
             proporcional: ['🏠 Alquiler'],
-            comun: ['🛒 Supermercado', '💊 Farmacia', '💡 Luz', '🔥 Gas', '🌐 Internet', '💧 Agua', '🏠 Seguro Casa', '🧹 Servicio Doméstico', '🏊‍♂️ Servicio Pileta', '🧪 Insumos Pileta', '🐈 Mascotas', '🛠️ Reparaciones Casa', '🍷 Salidas/Ocio'],
-            privado: ['⚕️ Obra Social', '💊 Farmacia', '🍷 Salidas/Ocio', '👕 Vestimenta', '✂️ Peluquería', '⛽ Combustible', '🚗 Seguro Auto', '🔧 Service Auto', '📄 Patente', '🛍️ Varios']
+            comun: categoriasUnificadas,
+            privado: categoriasUnificadas
         };
 
         function inicializarSelectoresFiltro() {
@@ -546,7 +555,7 @@
             } catch (error) { alert("Error al actualizar el medio de pago."); }
         };
 
-        // LÓGICA DE REIMPUTACIÓN CON MODAL (INDIVIDUAL Y MASIVA)
+        // LÓGICA DE REIMPUTACIÓN CON MODAL
         window.editarPeriodoImputacion = function(idGasto) {
             const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
             if (!gastoObj) return;
