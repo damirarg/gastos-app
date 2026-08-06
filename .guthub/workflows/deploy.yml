@@ -1,0 +1,35 @@
+name: Publicar en GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+
+  # Permite ejecutar el despliegue manualmente desde la pestaña Actions
+  workflow_dispatch:
+
+# Cancela ejecuciones anteriores si se hace un nuevo commit seguido
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+
+      - name: Cargar artefacto
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Publicar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
