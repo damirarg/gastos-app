@@ -288,7 +288,7 @@
                 <section id="seccion-privada-personal" class="card card-privada">
                     <h2>🔒 Control de Liquidez y Cuentas Personales (<span id="nombre-privado-titular">Usuario</span>)</h2>
                     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
-                        Ingresá tus saldos base de cada cuenta (admiten valores negativos). Cada gasto por transferencia o efectivo restará de la cuenta según la fecha real de la operación.
+                        Ingresá tus saldos base de cada cuenta. Cada consumo por transferencia o efectivo descontará de la caja según la fecha real de la transacción.
                     </p>
                     
                     <!-- TRES CUENTAS INDEPENDIENTES -->
@@ -316,7 +316,7 @@
                         <div class="metric-card" style="border-color: var(--success-color); background: #f4faf6;"><label style="color: var(--success-color); font-weight: 600;">LIQUIDEZ TOTAL REAL</label><div class="metric-val" id="disp-total-liquidez" style="color: var(--success-color);">$0</div></div>
                     </div>
 
-                    <!-- NUEVA SECCIÓN: MOVIMIENTO ENTRE CUENTAS PROPIAS -->
+                    <!-- SECCIÓN: MOVIMIENTO ENTRE CUENTAS PROPIAS -->
                     <div style="background: #fafafa; padding: 18px; border-radius: 14px; border: 1px solid var(--border-color); margin-bottom: 24px;">
                         <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--accent-color);">🔄 Movimiento / Transferencia entre Cuentas Propias</h3>
                         <form id="form-traspaso-cuentas">
@@ -1053,6 +1053,7 @@
             } catch (error) { alert("Error al registrar el pago de tarjeta."); }
         });
 
+        // LÓGICA DE PRÉSTAMOS
         function escucharPrestamoYcuotas() {
             onSnapshot(doc(db, "configuracion", "prestamo_auto_maxi"), (docSnap) => {
                 if (docSnap.exists()) {
@@ -1522,7 +1523,7 @@
             chartPrivadoInstance = new Chart(document.getElementById('chart-categorias-privado').getContext('2d'), { type: 'doughnut', data: { labels: Object.keys(porCatPrivado), datasets: [{ data: Object.values(porCatPrivado), backgroundColor: ['#0071e3', '#34c759', '#ff9500', '#ff2d55', '#5856d6', '#af52de', '#5ac8fa', '#e57373', '#ffc107', '#4dd0e1'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } });
         }
 
-        // CÁLCULO FÍSICO DE CAJA BASADO EN LA FECHA REAL DEL MOVIMIENTO
+        // CÁLCULO FÍSICO DE CAJA BASADO EN LA FECHA REAL DE LA OPERACIÓN
         window.calcularDineroPersonalPrivado = function() {
             if (!auth.currentUser) return;
             const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
@@ -1540,7 +1541,8 @@
             let egresosTarjetaPropia = 0;
             let egresosTarjetaExtension = 0;
 
-            // 1. EVALUAR CONSUMOS POR FECHA FÍSICA PARA SALDOS DE CAJA
+            // 1. EVALUAR CONSUMOS POR FECHA REAL DEL CALENDARIO
+            // Se leen TODOS los gastos registrados en la base de datos (independientemente del período de imputación)
             listaGastosGlobal.forEach(g => {
                 let pagadorFinanciero = g.pagadoPor;
                 let tObj = null;
@@ -1554,18 +1556,21 @@
                     const fechaObj = g.fecha ? g.fecha.toDate() : new Date();
                     const mesRealGasto = fechaObj.toISOString().slice(0, 7);
 
-                    // Si la transferencia o efectivo se realizó en el mes en pantalla, impacta el saldo bancario hoy
+                    // Si el egreso en efectivo o transferencia ocurrió en el mes que estamos consultando en pantalla, descuenta HOY de la caja
                     if (mesRealGasto === periodoActual) {
                         if (g.formato === 'efectivo') {
                             egresosEfectivo += g.monto;
                         } else if (g.formato === 'transferencia') {
                             const cObj = listaCuentasGlobal.find(c => c.id === g.medioId);
-                            if (cObj && cObj.banco.toLowerCase().includes('mercado')) egresosMP += g.monto;
-                            else egresosGalicia += g.monto;
+                            if (cObj && cObj.banco.toLowerCase().includes('mercado')) {
+                                egresosMP += g.monto;
+                            } else {
+                                egresosGalicia += g.monto;
+                            }
                         }
                     }
 
-                    // Las tarjetas de crédito siguen agrupándose por el período de imputación del resumen
+                    // El compromiso de tarjeta de crédito sí se agrupa según el período asignado al resumen
                     const periodoGasto = g.periodo ? g.periodo : mesRealGasto;
                     if (periodoGasto === periodoActual && g.formato === 'tarjeta') {
                         if (tObj && tObj.tipo === 'extension') egresosTarjetaExtension += g.monto;
@@ -1574,7 +1579,7 @@
                 }
             });
 
-            // 2. Sumar cobros del préstamo de Maxi por fecha real de ingreso
+            // 2. Sumar cobros del préstamo de Maxi por fecha real
             listaCuotasPrestamoGlobal.forEach(c => {
                 const fechaObj = c.fecha ? c.fecha.toDate() : new Date();
                 const mesRealCuota = fechaObj.toISOString().slice(0, 7);
