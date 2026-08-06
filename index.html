@@ -124,6 +124,7 @@
                 <button class="btn-tab" onclick="cambiarVista('vista-importador', this)">📄 Importar Planilla</button>
                 <button class="btn-tab" onclick="cambiarVista('vista-manual', this)">📝 Carga Manual</button>
                 <button class="btn-tab" onclick="cambiarVista('vista-privada', this)">🔒 Finanzas Privadas</button>
+                <button class="btn-tab" onclick="cambiarVista('vista-prestamos', this)">🤝 Préstamos</button>
                 <button class="btn-tab" onclick="cambiarVista('vista-tarjetas', this)">💳 Medios de Pago</button>
             </nav>
 
@@ -269,11 +270,11 @@
                 </section>
             </div>
 
-            <!-- VISTA 4: FINANZAS PRIVADAS -->
+            <!-- VISTA 4: FINANZAS PRIVADAS Y CONTROL DE LIQUIDEZ -->
             <div id="vista-privada" class="modulo-vista oculto">
                 <section class="card">
                     <h2>Ingresos Mensuales del Hogar 💵</h2>
-                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Actualizá los sueldos del mes y tocala "Guardar".</p>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Actualizá los sueldos del mes y tocá "Guardar".</p>
                     <div class="grid-2">
                         <div class="form-group"><label for="sueldo-damian">Sueldo Damián ($)</label><input type="text" id="sueldo-damian" class="monto-input" placeholder="Ej: 800.000" inputmode="numeric"></div>
                         <div class="form-group"><label for="sueldo-maxi">Sueldo Maxi ($)</label><input type="text" id="sueldo-maxi" class="monto-input" placeholder="Ej: 600.000" inputmode="numeric"></div>
@@ -285,21 +286,42 @@
                 </section>
 
                 <section id="seccion-privada-personal" class="card card-privada">
-                    <h2>🔒 Mi Finanza Personal Privada (<span id="nombre-privado-titular">Usuario</span>)</h2>
+                    <h2>🔒 Control de Liquidez y Cuentas Personales (<span id="nombre-privado-titular">Usuario</span>)</h2>
                     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
-                        Acá podés gestionar el saldo que te quedó del mes anterior. Tus gastos se actualizan automáticamente.
+                        Ingresá tus saldos base de cada cuenta. Cada consumo restará en tiempo real del dinero real de la cuenta utilizada.
                     </p>
-                    <div class="grid-4" style="align-items: end;">
+                    
+                    <!-- TRES CUENTAS INDEPENDIENTES -->
+                    <div class="grid-3" style="margin-bottom: 16px;">
                         <div class="form-group">
-                            <label for="saldo-anterior">Saldo Caja Mes Anterior</label>
-                            <div style="display: flex; gap: 8px;">
-                                <input type="text" id="saldo-anterior" class="monto-input" placeholder="Ej: 120.000" inputmode="numeric" style="width: 100%;">
-                                <button id="btn-guardar-saldo" class="btn-secundario" style="width: auto; padding: 12px 16px;" title="Guardar Saldo">💾</button>
-                            </div>
+                            <label for="saldo-base-efectivo">💵 Saldo Base Efectivo ($)</label>
+                            <input type="text" id="saldo-base-efectivo" class="monto-input" placeholder="Ej: 50.000" inputmode="numeric">
                         </div>
-                        <div class="form-group"><label for="mis-gastos-totales">Egresos Efectivo/Transf.</label><input type="text" id="mis-gastos-totales" style="font-weight: bold; color: var(--danger-color);" class="monto-input" placeholder="$0" readonly></div>
-                        <div class="form-group"><label for="mis-gastos-credito">Consumos Tarjeta (A pagar)</label><input type="text" id="mis-gastos-credito" style="font-weight: bold; color: #ff9500;" class="monto-input" placeholder="$0" readonly></div>
-                        <div class="form-group"><label for="saldo-disponible-final">Caja Disponible Restante</label><input type="text" id="saldo-disponible-final" style="font-weight: bold; color: var(--success-color);" readonly placeholder="$0"></div>
+                        <div class="form-group">
+                            <label for="saldo-base-galicia">🏦 Saldo Base Banco Galicia ($)</label>
+                            <input type="text" id="saldo-base-galicia" class="monto-input" placeholder="Ej: 1.500.000" inputmode="numeric">
+                        </div>
+                        <div class="form-group">
+                            <label for="saldo-base-mp">📱 Saldo Base Mercado Pago ($)</label>
+                            <input type="text" id="saldo-base-mp" class="monto-input" placeholder="Ej: 800.000" inputmode="numeric">
+                        </div>
+                    </div>
+                    <button id="btn-guardar-saldos-base" class="btn-secundario" style="margin-bottom: 20px;">💾 Guardar Saldos Base Cuentas</button>
+
+                    <!-- CUADROS DE DISPONIBILIDAD EN TIEMPO REAL -->
+                    <div class="grid-4" style="align-items: end; margin-bottom: 20px;">
+                        <div class="metric-card"><label>Efectivo Disponible</label><div class="metric-val" id="disp-efectivo" style="font-size: 18px;">$0</div></div>
+                        <div class="metric-card"><label>Galicia Disponible</label><div class="metric-val" id="disp-galicia" style="font-size: 18px;">$0</div></div>
+                        <div class="metric-card"><label>Mercado Pago Disp.</label><div class="metric-val" id="disp-mp" style="font-size: 18px;">$0</div></div>
+                        <div class="metric-card" style="border-color: var(--success-color); background: #f4faf6;"><label style="color: var(--success-color); font-weight: 600;">LIQUIDEZ TOTAL REAL</label><div class="metric-val" id="disp-total-liquidez" style="color: var(--success-color);">$0</div></div>
+                    </div>
+
+                    <!-- DESGLOSE DE COMPROMISOS EN TARJETAS DE CRÉDITO -->
+                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #004085;">💳 Compromiso en Tarjetas de Crédito a pagar este mes</h3>
+                    <div class="grid-3" style="margin-bottom: 20px;">
+                        <div class="metric-card"><label>Mi Tarjeta Titular</label><div class="metric-val" id="credito-propio" style="color: #ff9500; font-size: 18px;">$0</div></div>
+                        <div class="metric-card"><label>Mi Extensión de Maxi</label><div class="metric-val" id="credito-extension" style="color: #ff9500; font-size: 18px;">$0</div></div>
+                        <div class="metric-card" style="border-color: #ff9500; background: #fffbf0;"><label style="color: #c66900; font-weight: 600;">TOTAL A PAGAR AL BANCO</label><div class="metric-val" id="credito-total-tarjetas" style="color: #c66900;">$0</div></div>
                     </div>
 
                     <div class="grid-2" style="margin-top: 24px;">
@@ -348,7 +370,61 @@
                 </section>
             </div>
 
-            <!-- VISTA 5: MEDIOS DE PAGO -->
+            <!-- VISTA 5: NUEVO MÓDULO DE PRÉSTAMOS -->
+            <div id="vista-prestamos" class="modulo-vista oculto">
+                <section class="card">
+                    <h2>🤝 Control de Préstamos Personales</h2>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+                        Gestioná el préstamo personal del auto a Maxi, registrá cuotas de pago y mantené actualizado el saldo pendiente.
+                    </p>
+                    
+                    <form id="form-config-prestamo" style="margin-bottom: 24px; background: #fafafa; padding: 16px; border-radius: 14px; border: 1px solid var(--border-color);">
+                        <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--accent-color);">1. Configurar o Actualizar Préstamo Inicial</h3>
+                        <div class="grid-3">
+                            <div class="form-group"><label>Monto Original Préstamo ($)</label><input type="text" id="prestamo-monto-original" class="monto-input" placeholder="Ej: 3.000.000" inputmode="numeric" required></div>
+                            <div class="form-group"><label>Fecha Otorgamiento</label><input type="date" id="prestamo-fecha-inicio" required></div>
+                            <div class="form-group"><label>Motivo / Descripción</label><input type="text" id="prestamo-motivo" value="Préstamo Compra Auto Maxi" required></div>
+                        </div>
+                        <button type="submit" class="btn-secundario" style="width: auto;">💾 Guardar Configuración de Préstamo</button>
+                    </form>
+
+                    <!-- RESUMEN DEL PRÉSTAMO Y REGISTRO DE PAGOS -->
+                    <div class="grid-3" style="margin-bottom: 24px;">
+                        <div class="metric-card"><label>Monto Original Prestado</label><div class="metric-val" id="metric-prestamo-original">$0</div></div>
+                        <div class="metric-card"><label>Total Cobrado Hasta Hoy</label><div class="metric-val" id="metric-prestamo-cobrado" style="color: var(--success-color);">$0</div></div>
+                        <div class="metric-card" style="border-color: var(--accent-color); background: #f0f8ff;"><label style="color: var(--accent-color); font-weight: 600;">SALDO PENDIENTE DE CANCELAR</label><div class="metric-val" id="metric-prestamo-pendiente" style="color: var(--accent-color);">$0</div></div>
+                    </div>
+
+                    <!-- FORMULARIO REGISTRAR CUOTA/PAGO -->
+                    <form id="form-pago-prestamo" style="margin-bottom: 24px;">
+                        <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--success-color);">2. Registrar Cobro de Cuota / Pago Parcial</h3>
+                        <div class="grid-3">
+                            <div class="form-group"><label>Fecha de Cobro</label><input type="date" id="cuota-fecha" required></div>
+                            <div class="form-group"><label>Monto Cobrado ($)</label><input type="text" id="cuota-monto" class="monto-input" placeholder="Ej: 150.000" inputmode="numeric" required></div>
+                            <div class="form-group">
+                                <label>Cuenta de Destino (Donde ingresó la plata)</label>
+                                <select id="cuota-cuenta-destino">
+                                    <option value="efectivo">💵 Efectivo</option>
+                                    <option value="mp">📱 Mercado Pago</option>
+                                    <option value="galicia">🏦 Banco Galicia</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" style="background-color: var(--success-color);">+ Registrar Cobro de Cuota y Sumar a Cuenta 💵</button>
+                    </form>
+
+                    <!-- HISTORIAL DE CUOTAS COBRADAS -->
+                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Historial de Pagos Recibidos 📋</h3>
+                    <div class="tabla-wrapper">
+                        <table>
+                            <thead><tr><th>Fecha Pago</th><th>Detalle</th><th>Ingresó en</th><th>Monto Recibido</th><th>Acción</th></tr></thead>
+                            <tbody id="tabla-prestamo-cuotas-body"><tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No hay pagos registrados.</td></tr></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
+            <!-- VISTA 6: MEDIOS DE PAGO -->
             <div id="vista-tarjetas" class="modulo-vista oculto">
                 <section class="card">
                     <h2>💳 Registrar Nueva Tarjeta de Crédito</h2>
@@ -410,6 +486,8 @@
         filtroMesInput.value = mesActualStr;
         periodoImputacionInput.value = mesActualStr;
         document.getElementById('fecha-manual').value = hoy.toISOString().split('T')[0];
+        document.getElementById('cuota-fecha').value = hoy.toISOString().split('T')[0];
+        document.getElementById('prestamo-fecha-inicio').value = "2026-02-01";
 
         filtroMesInput.addEventListener('change', () => {
             periodoImputacionInput.value = filtroMesInput.value;
@@ -425,6 +503,7 @@
         let listaGastosGlobal = [];
         let listaTarjetasGlobal = [];
         let listaCuentasGlobal = [];
+        let listaCuotasPrestamoGlobal = [];
         let idGastoEnEdicionPeriodo = null;
         let esEdicionMasiva = false;
         let modoSeleccionActivoComun = false;
@@ -441,6 +520,7 @@
                 escucharTarjetasYcuentas();
                 escucharGastosEnTiempoReal();
                 cargarIngresosYsaldoDelMes();
+                escucharPrestamoYcuotas();
             } else {
                 pantallaLoginWrapper.classList.remove('oculto');
                 seccionApp.classList.add('oculto');
@@ -464,7 +544,6 @@
             boton.classList.add('activo');
         };
 
-        // CATEGORÍAS COMPLETAS Y UNIFICADAS (CON PUCHOS EN GASTOS PRIVADOS)
         const categoriasBase = [
             '🛒 Supermercado', '💊 Farmacia', '💡 Luz', '🔥 Gas', '🌐 Internet', '💧 Agua', 
             '🏠 Seguro Casa', '🧹 Servicio Doméstico', '🏊‍♂️ Servicio Pileta', '🧪 Insumos Pileta', 
@@ -476,7 +555,7 @@
         const categoriasPorTipo = {
             proporcional: ['🏠 Alquiler'],
             comun: categoriasBase,
-            privado: ['🚬 Puchos', ...categoriasBase] // Puchos agregado a Gastos Personales
+            privado: ['🚬 Puchos', ...categoriasBase]
         };
 
         function inicializarSelectoresFiltro() {
@@ -783,6 +862,7 @@
             if (confirm("¿Borrar este medio de pago?")) { await deleteDoc(doc(db, coleccion, id)); }
         };
 
+        // INGRESOS Y SALDOS BASE DE LAS TRES CUENTAS EN FIREBASE
         async function cargarIngresosYsaldoDelMes() {
             const mes = filtroMesInput.value;
             const docRef = doc(db, "ingresos", mes);
@@ -793,12 +873,19 @@
                 document.getElementById('sueldo-maxi').value = new Intl.NumberFormat('es-AR').format(data.sueldoMaxi || 0);
 
                 const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
-                const saldoGuardado = esDamian ? (data.saldoDamian || 0) : (data.saldoMaxi || 0);
-                document.getElementById('saldo-anterior').value = saldoGuardado ? new Intl.NumberFormat('es-AR').format(saldoGuardado) : '';
+                const sEfectivo = esDamian ? (data.baseEfectivoDamian || 0) : 0;
+                const sGalicia = esDamian ? (data.baseGaliciaDamian || 0) : 0;
+                const sMP = esDamian ? (data.baseMPDamian || 0) : 0;
+
+                document.getElementById('saldo-base-efectivo').value = sEfectivo ? new Intl.NumberFormat('es-AR').format(sEfectivo) : '';
+                document.getElementById('saldo-base-galicia').value = sGalicia ? new Intl.NumberFormat('es-AR').format(sGalicia) : '';
+                document.getElementById('saldo-base-mp').value = sMP ? new Intl.NumberFormat('es-AR').format(sMP) : '';
             } else {
                 document.getElementById('sueldo-damian').value = ''; 
                 document.getElementById('sueldo-maxi').value = '';
-                document.getElementById('saldo-anterior').value = '';
+                document.getElementById('saldo-base-efectivo').value = '';
+                document.getElementById('saldo-base-galicia').value = '';
+                document.getElementById('saldo-base-mp').value = '';
             }
             calcularProporcionAlquiler();
             if(window.recalcularBalanceNeteado) window.recalcularBalanceNeteado();
@@ -818,24 +905,122 @@
             } catch (error) { alert("Error al guardar ingresos."); }
         });
 
-        document.getElementById('btn-guardar-saldo').addEventListener('click', async () => {
+        document.getElementById('btn-guardar-saldos-base').addEventListener('click', async () => {
             const mes = filtroMesInput.value;
-            const saldoLimpio = parseInt(document.getElementById('saldo-anterior').value.replace(/\D/g, '') || 0, 10);
-            const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
+            const bEfectivo = parseInt(document.getElementById('saldo-base-efectivo').value.replace(/\D/g, '') || 0, 10);
+            const bGalicia = parseInt(document.getElementById('saldo-base-galicia').value.replace(/\D/g, '') || 0, 10);
+            const bMP = parseInt(document.getElementById('saldo-base-mp').value.replace(/\D/g, '') || 0, 10);
             
-            const btn = document.getElementById('btn-guardar-saldo');
-            btn.textContent = "⏳"; btn.disabled = true;
+            const btn = document.getElementById('btn-guardar-saldos-base');
+            btn.textContent = "Guardando saldos..."; btn.disabled = true;
 
             try {
-                if (esDamian) {
-                    await setDoc(doc(db, "ingresos", mes), { saldoDamian: saldoLimpio }, { merge: true });
-                } else {
-                    await setDoc(doc(db, "ingresos", mes), { saldoMaxi: saldoLimpio }, { merge: true });
-                }
-                btn.textContent = "✓"; 
-                setTimeout(() => { btn.textContent = "💾"; btn.disabled = false; }, 2000);
-            } catch (error) { alert("Error al guardar saldo."); btn.textContent = "💾"; btn.disabled = false; }
+                await setDoc(doc(db, "ingresos", mes), {
+                    baseEfectivoDamian: bEfectivo,
+                    baseGaliciaDamian: bGalicia,
+                    baseMPDamian: bMP
+                }, { merge: true });
+                btn.textContent = "✓ Saldos Base Guardados"; 
+                setTimeout(() => { btn.textContent = "💾 Guardar Saldos Base Cuentas"; btn.disabled = false; }, 2000);
+            } catch (error) { alert("Error al guardar saldos base."); btn.textContent = "💾 Guardar Saldos Base Cuentas"; btn.disabled = false; }
         });
+
+        // LÓGICA DE PRÉSTAMOS
+        function escucharPrestamoYcuotas() {
+            onSnapshot(doc(db, "configuracion", "prestamo_auto_maxi"), (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    document.getElementById('prestamo-monto-original').value = new Intl.NumberFormat('es-AR').format(data.montoOriginal || 0);
+                    document.getElementById('prestamo-fecha-inicio').value = data.fechaInicio || "2026-02-01";
+                    document.getElementById('prestamo-motivo').value = data.motivo || "Préstamo Compra Auto Maxi";
+                }
+                recalcularTotalesPrestamo();
+            });
+
+            const q = query(collection(db, "cuotas_prestamo"), orderBy("fecha", "desc"));
+            onSnapshot(q, (snapshot) => {
+                listaCuotasPrestamoGlobal = [];
+                const tbody = document.getElementById('tabla-prestamo-cuotas-body');
+                tbody.innerHTML = "";
+
+                snapshot.forEach((docSnap) => {
+                    const cuota = docSnap.data(); cuota.id = docSnap.id;
+                    listaCuotasPrestamoGlobal.push(cuota);
+
+                    const fechaObj = cuota.fecha ? cuota.fecha.toDate() : new Date();
+                    const fechaFmt = fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    
+                    let cuentaFmt = "💵 Efectivo";
+                    if (cuota.cuentaDestino === 'mp') cuentaFmt = "📱 Mercado Pago";
+                    else if (cuota.cuentaDestino === 'galicia') cuentaFmt = "🏦 Banco Galicia";
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${fechaFmt}</td>
+                            <td>${cuota.motivo || "Pago cuota auto"}</td>
+                            <td><span class="badge-pagado">${cuentaFmt}</span></td>
+                            <td><strong>$${new Intl.NumberFormat('es-AR').format(cuota.monto)}</strong></td>
+                            <td><button class="btn-eliminar" onclick="eliminarCuotaPrestamo('${cuota.id}')">🗑️</button></td>
+                        </tr>`;
+                });
+
+                if (listaCuotasPrestamoGlobal.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No hay pagos registrados.</td></tr>`;
+                }
+
+                recalcularTotalesPrestamo();
+                if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+            });
+        }
+
+        document.getElementById('form-config-prestamo').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const montoOriginal = parseInt(document.getElementById('prestamo-monto-original').value.replace(/\D/g, ''), 10);
+            const fechaInicio = document.getElementById('prestamo-fecha-inicio').value;
+            const motivo = document.getElementById('prestamo-motivo').value;
+
+            try {
+                await setDoc(doc(db, "configuracion", "prestamo_auto_maxi"), {
+                    montoOriginal: montoOriginal, fechaInicio: fechaInicio, motivo: motivo
+                }, { merge: true });
+                alert("Préstamo configurado correctamente.");
+            } catch (error) { alert("Error al guardar la configuración del préstamo."); }
+        });
+
+        document.getElementById('form-pago-prestamo').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const montoCuota = parseInt(document.getElementById('cuota-monto').value.replace(/\D/g, ''), 10);
+            const fechaCuota = new Date(document.getElementById('cuota-fecha').value + "T12:00:00");
+            const cuentaDestino = document.getElementById('cuota-cuenta-destino').value;
+
+            if (!montoCuota || montoCuota <= 0) return;
+
+            try {
+                await addDoc(collection(db, "cuotas_prestamo"), {
+                    monto: montoCuota, fecha: fechaCuota, cuentaDestino: cuentaDestino,
+                    motivo: "Cuota préstamo auto Maxi", usuarioCreador: auth.currentUser.email
+                });
+                document.getElementById('form-pago-prestamo').reset();
+                document.getElementById('cuota-fecha').value = new Date().toISOString().split('T')[0];
+            } catch (error) { alert("Error al registrar el cobro de la cuota."); }
+        });
+
+        window.eliminarCuotaPrestamo = async function(id) {
+            if (confirm("¿Borrar este pago del préstamo?")) { await deleteDoc(doc(db, "cuotas_prestamo", id)); }
+        };
+
+        function recalcularTotalesPrestamo() {
+            const montoOriginal = obtenerNumeroLimpio('prestamo-monto-original');
+            let totalCobrado = 0;
+
+            listaCuotasPrestamoGlobal.forEach(c => totalCobrado += c.monto);
+
+            const pendiente = Math.max(0, montoOriginal - totalCobrado);
+
+            document.getElementById('metric-prestamo-original').textContent = "$" + new Intl.NumberFormat('es-AR').format(montoOriginal);
+            document.getElementById('metric-prestamo-cobrado').textContent = "$" + new Intl.NumberFormat('es-AR').format(totalCobrado);
+            document.getElementById('metric-prestamo-pendiente').textContent = "$" + new Intl.NumberFormat('es-AR').format(pendiente);
+        }
 
         window.estadoDeudaActual = null;
         document.getElementById('btn-abrir-saldar').addEventListener('click', () => {
@@ -1209,32 +1394,68 @@
             chartPrivadoInstance = new Chart(document.getElementById('chart-categorias-privado').getContext('2d'), { type: 'doughnut', data: { labels: Object.keys(porCatPrivado), datasets: [{ data: Object.values(porCatPrivado), backgroundColor: ['#0071e3', '#34c759', '#ff9500', '#ff2d55', '#5856d6', '#af52de', '#5ac8fa', '#e57373', '#ffc107', '#4dd0e1'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } });
         }
 
+        // CÁLCULO FÍSICO DE CAJA CON TRES CUENTAS Y DESGLOSE DE TARJETAS
         window.calcularDineroPersonalPrivado = function() {
             if (!auth.currentUser) return;
             const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
             const userActivo = esDamian ? "Damian" : "Maxi";
-            const ingresoPropio = esDamian ? obtenerNumeroLimpio('sueldo-damian') : obtenerNumeroLimpio('sueldo-maxi');
-            const saldoAnterior = obtenerNumeroLimpio('saldo-anterior');
             
-            let egresosCajaPropia = 0; let egresosTarjetaPropia = 0;
+            const bEfectivo = obtenerNumeroLimpio('saldo-base-efectivo');
+            const bGalicia = obtenerNumeroLimpio('saldo-base-galicia');
+            const bMP = obtenerNumeroLimpio('saldo-base-mp');
 
+            let egresosEfectivo = 0;
+            let egresosGalicia = 0;
+            let egresosMP = 0;
+
+            let egresosTarjetaPropia = 0;
+            let egresosTarjetaExtension = 0;
+
+            // Recorrer todos los gastos del período en pantalla
             listaGastosGlobal.forEach(g => {
                 let pagadorFinanciero = g.pagadoPor;
+                let tObj = null;
+
                 if (g.formato === 'tarjeta' && g.medioId) {
-                    const tObj = listaTarjetasGlobal.find(t => t.id === g.medioId);
+                    tObj = listaTarjetasGlobal.find(t => t.id === g.medioId);
                     if (tObj) pagadorFinanciero = tObj.tipo === 'extension' ? (tObj.titular === 'Dami' ? 'Maxi' : 'Damian') : (tObj.titular === 'Dami' ? 'Damian' : 'Maxi');
                 }
 
                 if (pagadorFinanciero === userActivo) {
-                    if (g.formato === 'efectivo' || g.formato === 'transferencia') { egresosCajaPropia += g.monto; } 
-                    else if (g.formato === 'tarjeta') { egresosTarjetaPropia += g.monto; }
+                    if (g.formato === 'efectivo') {
+                        egresosEfectivo += g.monto;
+                    } else if (g.formato === 'transferencia') {
+                        const cObj = listaCuentasGlobal.find(c => c.id === g.medioId);
+                        if (cObj && cObj.banco.toLowerCase().includes('mercado')) egresosMP += g.monto;
+                        else egresosGalicia += g.monto;
+                    } else if (g.formato === 'tarjeta') {
+                        if (tObj && tObj.tipo === 'extension') egresosTarjetaExtension += g.monto;
+                        else egresosTarjetaPropia += g.monto;
+                    }
                 }
             });
 
-            document.getElementById('mis-gastos-totales').value = "$" + new Intl.NumberFormat('es-AR').format(egresosCajaPropia);
-            document.getElementById('mis-gastos-credito').value = "$" + new Intl.NumberFormat('es-AR').format(egresosTarjetaPropia);
-            const disponibleFinal = (saldoAnterior + ingresoPropio) - egresosCajaPropia;
-            document.getElementById('saldo-disponible-final').value = "$" + new Intl.NumberFormat('es-AR').format(disponibleFinal);
+            // Sumar cobros del préstamo de Maxi a las cuentas de destino
+            listaCuotasPrestamoGlobal.forEach(c => {
+                if (c.cuentaDestino === 'efectivo') egresosEfectivo -= c.monto; // Resta egreso = Suma saldo
+                else if (c.cuentaDestino === 'galicia') egresosGalicia -= c.monto;
+                else if (c.cuentaDestino === 'mp') egresosMP -= c.monto;
+            });
+
+            const dispEfectivo = bEfectivo - egresosEfectivo;
+            const dispGalicia = bGalicia - egresosGalicia;
+            const dispMP = bMP - egresosMP;
+            const dispTotal = dispEfectivo + dispGalicia + dispMP;
+
+            document.getElementById('disp-efectivo').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispEfectivo);
+            document.getElementById('disp-galicia').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispGalicia);
+            document.getElementById('disp-mp').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispMP);
+            document.getElementById('disp-total-liquidez').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispTotal);
+
+            // Desglose de tarjetas a pagar
+            document.getElementById('credito-propio').textContent = "$" + new Intl.NumberFormat('es-AR').format(egresosTarjetaPropia);
+            document.getElementById('credito-extension').textContent = "$" + new Intl.NumberFormat('es-AR').format(egresosTarjetaExtension);
+            document.getElementById('credito-total-tarjetas').textContent = "$" + new Intl.NumberFormat('es-AR').format(egresosTarjetaPropia + egresosTarjetaExtension);
         };
     </script>
 
