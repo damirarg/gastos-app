@@ -316,8 +316,67 @@
                         <div class="metric-card" style="border-color: var(--success-color); background: #f4faf6;"><label style="color: var(--success-color); font-weight: 600;">LIQUIDEZ TOTAL REAL</label><div class="metric-val" id="disp-total-liquidez" style="color: var(--success-color);">$0</div></div>
                     </div>
 
-                    <!-- DESGLOSE DE COMPROMISOS EN TARJETAS DE CRÉDITO -->
-                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #004085;">💳 Compromiso en Tarjetas de Crédito a pagar este mes</h3>
+                    <!-- NUEVA SECCIÓN: MOVIMIENTO ENTRE CUENTAS PROPIAS -->
+                    <div style="background: #fafafa; padding: 18px; border-radius: 14px; border: 1px solid var(--border-color); margin-bottom: 24px;">
+                        <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--accent-color);">🔄 Movimiento / Transferencia entre Cuentas Propias</h3>
+                        <form id="form-traspaso-cuentas">
+                            <div class="grid-4">
+                                <div class="form-group"><label>Fecha</label><input type="date" id="traspaso-fecha" required></div>
+                                <div class="form-group">
+                                    <label>Desde Cuenta Origen (Resta)</label>
+                                    <select id="traspaso-origen">
+                                        <option value="galicia">🏦 Banco Galicia</option>
+                                        <option value="mp">📱 Mercado Pago</option>
+                                        <option value="efectivo">💵 Efectivo</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Hacia Cuenta Destino (Suma)</label>
+                                    <select id="traspaso-destino">
+                                        <option value="mp">📱 Mercado Pago</option>
+                                        <option value="galicia">🏦 Banco Galicia</option>
+                                        <option value="efectivo">💵 Efectivo</option>
+                                    </select>
+                                </div>
+                                <div class="form-group"><label>Monto Traspaso ($)</label><input type="text" id="traspaso-monto" class="monto-input" placeholder="Ej: 50.000" inputmode="numeric" required></div>
+                            </div>
+                            <button type="submit" class="btn-secundario" style="margin-top: 4px;">🔄 Registrar Traspaso entre Cuentas</button>
+                        </form>
+                    </div>
+
+                    <!-- DESGLOSE DE COMPROMISOS EN TARJETAS DE CRÉDITO Y REGISTRO DE PAGO -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h3 style="font-size: 15px; font-weight: 600; color: #004085; margin: 0;">💳 Compromiso en Tarjetas de Crédito a pagar este mes</h3>
+                        <button type="button" class="btn-secundario" style="width: auto; padding: 6px 14px; font-size: 12px;" onclick="document.getElementById('contenedor-pago-tarjeta').classList.toggle('oculto')">💳 Registrar Pago de Tarjeta</button>
+                    </div>
+
+                    <!-- FORMULARIO REGISTRAR PAGO DE TARJETA -->
+                    <div id="contenedor-pago-tarjeta" class="oculto" style="background: #fffbf0; padding: 18px; border-radius: 14px; border: 1px solid #ffe0b2; margin-bottom: 20px;">
+                        <h4 style="font-size: 14px; margin-bottom: 12px; color: #c66900;">Registrar Cancelación / Pago de Resumen de Tarjeta</h4>
+                        <form id="form-pago-tarjeta">
+                            <div class="grid-4">
+                                <div class="form-group"><label>Fecha de Pago</label><input type="date" id="pago-tarjeta-fecha" required></div>
+                                <div class="form-group">
+                                    <label>Tarjeta Cancelada</label>
+                                    <select id="pago-tarjeta-tipo">
+                                        <option value="propia">💳 Mi Tarjeta Titular</option>
+                                        <option value="extension">📑 Mi Extensión de Maxi</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Cuenta Liquidadora (De donde sale el dinero)</label>
+                                    <select id="pago-tarjeta-cuenta">
+                                        <option value="galicia">🏦 Banco Galicia</option>
+                                        <option value="mp">📱 Mercado Pago</option>
+                                        <option value="efectivo">💵 Efectivo</option>
+                                    </select>
+                                </div>
+                                <div class="form-group"><label>Monto Pagado ($)</label><input type="text" id="pago-tarjeta-monto" class="monto-input" placeholder="Ej: 500.000" inputmode="numeric" required></div>
+                            </div>
+                            <button type="submit" style="background-color: #ff9500;">✓ Confirmar Pago de Tarjeta y Descontar de Cuenta</button>
+                        </form>
+                    </div>
+
                     <div class="grid-3" style="margin-bottom: 20px;">
                         <div class="metric-card"><label>Mi Tarjeta Titular</label><div class="metric-val" id="credito-propio" style="color: #ff9500; font-size: 18px;">$0</div></div>
                         <div class="metric-card"><label>Mi Extensión de Maxi</label><div class="metric-val" id="credito-extension" style="color: #ff9500; font-size: 18px;">$0</div></div>
@@ -370,7 +429,7 @@
                 </section>
             </div>
 
-            <!-- VISTA 5: NUEVO MÓDULO DE PRÉSTAMOS -->
+            <!-- VISTA 5: PRÉSTAMOS -->
             <div id="vista-prestamos" class="modulo-vista oculto">
                 <section class="card">
                     <h2>🤝 Control de Préstamos Personales</h2>
@@ -388,14 +447,12 @@
                         <button type="submit" class="btn-secundario" style="width: auto;">💾 Guardar Configuración de Préstamo</button>
                     </form>
 
-                    <!-- RESUMEN DEL PRÉSTAMO Y REGISTRO DE PAGOS -->
                     <div class="grid-3" style="margin-bottom: 24px;">
                         <div class="metric-card"><label>Monto Original Prestado</label><div class="metric-val" id="metric-prestamo-original">$0</div></div>
                         <div class="metric-card"><label>Total Cobrado Hasta Hoy</label><div class="metric-val" id="metric-prestamo-cobrado" style="color: var(--success-color);">$0</div></div>
                         <div class="metric-card" style="border-color: var(--accent-color); background: #f0f8ff;"><label style="color: var(--accent-color); font-weight: 600;">SALDO PENDIENTE DE CANCELAR</label><div class="metric-val" id="metric-prestamo-pendiente" style="color: var(--accent-color);">$0</div></div>
                     </div>
 
-                    <!-- FORMULARIO REGISTRAR CUOTA/PAGO -->
                     <form id="form-pago-prestamo" style="margin-bottom: 24px;">
                         <h3 style="font-size: 15px; margin-bottom: 12px; color: var(--success-color);">2. Registrar Cobro de Cuota / Pago Parcial</h3>
                         <div class="grid-3">
@@ -413,7 +470,6 @@
                         <button type="submit" style="background-color: var(--success-color);">+ Registrar Cobro de Cuota y Sumar a Cuenta 💵</button>
                     </form>
 
-                    <!-- HISTORIAL DE CUOTAS COBRADAS -->
                     <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Historial de Pagos Recibidos 📋</h3>
                     <div class="tabla-wrapper">
                         <table>
@@ -487,6 +543,8 @@
         periodoImputacionInput.value = mesActualStr;
         document.getElementById('fecha-manual').value = hoy.toISOString().split('T')[0];
         document.getElementById('cuota-fecha').value = hoy.toISOString().split('T')[0];
+        document.getElementById('traspaso-fecha').value = hoy.toISOString().split('T')[0];
+        document.getElementById('pago-tarjeta-fecha').value = hoy.toISOString().split('T')[0];
         document.getElementById('prestamo-fecha-inicio').value = "2026-02-01";
 
         filtroMesInput.addEventListener('change', () => {
@@ -504,6 +562,8 @@
         let listaTarjetasGlobal = [];
         let listaCuentasGlobal = [];
         let listaCuotasPrestamoGlobal = [];
+        let listaTraspasosGlobal = [];
+        let listaPagosTarjetasGlobal = [];
         let idGastoEnEdicionPeriodo = null;
         let esEdicionMasiva = false;
         let modoSeleccionActivoComun = false;
@@ -521,6 +581,7 @@
                 escucharGastosEnTiempoReal();
                 cargarIngresosYsaldoDelMes();
                 escucharPrestamoYcuotas();
+                escucharTraspasosYPagosTarjetas();
             } else {
                 pantallaLoginWrapper.classList.remove('oculto');
                 seccionApp.classList.add('oculto');
@@ -925,6 +986,74 @@
             } catch (error) { alert("Error al guardar saldos base."); btn.textContent = "💾 Guardar Saldos Base Cuentas"; btn.disabled = false; }
         });
 
+        // LÓGICA DE TRASPASOS ENTRE CUENTAS Y PAGOS DE TARJETA
+        function escucharTraspasosYPagosTarjetas() {
+            const qTraspasos = query(collection(db, "traspasos_cuentas"), orderBy("fecha", "desc"));
+            onSnapshot(qTraspasos, (snapshot) => {
+                listaTraspasosGlobal = [];
+                snapshot.forEach((docSnap) => {
+                    const t = docSnap.data(); t.id = docSnap.id;
+                    listaTraspasosGlobal.push(t);
+                });
+                if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+            });
+
+            const qPagos = query(collection(db, "pagos_tarjeta"), orderBy("fecha", "desc"));
+            onSnapshot(qPagos, (snapshot) => {
+                listaPagosTarjetasGlobal = [];
+                snapshot.forEach((docSnap) => {
+                    const p = docSnap.data(); p.id = docSnap.id;
+                    listaPagosTarjetasGlobal.push(p);
+                });
+                if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+            });
+        }
+
+        document.getElementById('form-traspaso-cuentas').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fecha = new Date(document.getElementById('traspaso-fecha').value + "T12:00:00");
+            const origen = document.getElementById('traspaso-origen').value;
+            const destino = document.getElementById('traspaso-destino').value;
+            const monto = parseInt(document.getElementById('traspaso-monto').value.replace(/\D/g, ''), 10);
+
+            if (origen === destino) {
+                alert("La cuenta de origen y destino deben ser diferentes.");
+                return;
+            }
+            if (!monto || monto <= 0) return;
+
+            try {
+                await addDoc(collection(db, "traspasos_cuentas"), {
+                    fecha: fecha, origen: origen, destino: destino, monto: monto,
+                    periodo: filtroMesInput.value, usuarioCreador: auth.currentUser.email
+                });
+                document.getElementById('form-traspaso-cuentas').reset();
+                document.getElementById('traspaso-fecha').value = new Date().toISOString().split('T')[0];
+                alert("Traspaso entre cuentas registrado correctamente.");
+            } catch (error) { alert("Error al registrar el traspaso."); }
+        });
+
+        document.getElementById('form-pago-tarjeta').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fecha = new Date(document.getElementById('pago-tarjeta-fecha').value + "T12:00:00");
+            const tarjetaTipo = document.getElementById('pago-tarjeta-tipo').value; // 'propia' o 'extension'
+            const cuentaLiquidadora = document.getElementById('pago-tarjeta-cuenta').value; // 'galicia', 'mp', 'efectivo'
+            const monto = parseInt(document.getElementById('pago-tarjeta-monto').value.replace(/\D/g, ''), 10);
+
+            if (!monto || monto <= 0) return;
+
+            try {
+                await addDoc(collection(db, "pagos_tarjeta"), {
+                    fecha: fecha, tarjetaTipo: tarjetaTipo, cuentaLiquidadora: cuentaLiquidadora, monto: monto,
+                    periodo: filtroMesInput.value, usuarioCreador: auth.currentUser.email
+                });
+                document.getElementById('form-pago-tarjeta').reset();
+                document.getElementById('pago-tarjeta-fecha').value = new Date().toISOString().split('T')[0];
+                document.getElementById('contenedor-pago-tarjeta').classList.add('oculto');
+                alert("Pago de tarjeta registrado correctamente.");
+            } catch (error) { alert("Error al registrar el pago de tarjeta."); }
+        });
+
         // LÓGICA DE PRÉSTAMOS
         function escucharPrestamoYcuotas() {
             onSnapshot(doc(db, "configuracion", "prestamo_auto_maxi"), (docSnap) => {
@@ -998,7 +1127,8 @@
             try {
                 await addDoc(collection(db, "cuotas_prestamo"), {
                     monto: montoCuota, fecha: fechaCuota, cuentaDestino: cuentaDestino,
-                    motivo: "Cuota préstamo auto Maxi", usuarioCreador: auth.currentUser.email
+                    motivo: "Cuota préstamo auto Maxi", usuarioCreador: auth.currentUser.email,
+                    periodo: filtroMesInput.value
                 });
                 document.getElementById('form-pago-prestamo').reset();
                 document.getElementById('cuota-fecha').value = new Date().toISOString().split('T')[0];
@@ -1394,11 +1524,12 @@
             chartPrivadoInstance = new Chart(document.getElementById('chart-categorias-privado').getContext('2d'), { type: 'doughnut', data: { labels: Object.keys(porCatPrivado), datasets: [{ data: Object.values(porCatPrivado), backgroundColor: ['#0071e3', '#34c759', '#ff9500', '#ff2d55', '#5856d6', '#af52de', '#5ac8fa', '#e57373', '#ffc107', '#4dd0e1'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } });
         }
 
-        // CÁLCULO FÍSICO DE CAJA CON TRES CUENTAS Y DESGLOSE DE TARJETAS
+        // CÁLCULO FÍSICO DE CAJA CON TRES CUENTAS, TRASPASOS Y PAGOS DE TARJETA
         window.calcularDineroPersonalPrivado = function() {
             if (!auth.currentUser) return;
             const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
             const userActivo = esDamian ? "Damian" : "Maxi";
+            const periodoActual = filtroMesInput.value;
             
             const bEfectivo = obtenerNumeroLimpio('saldo-base-efectivo');
             const bGalicia = obtenerNumeroLimpio('saldo-base-galicia');
@@ -1411,7 +1542,7 @@
             let egresosTarjetaPropia = 0;
             let egresosTarjetaExtension = 0;
 
-            // Recorrer todos los gastos del período en pantalla
+            // 1. Descontar consumos del mes
             listaGastosGlobal.forEach(g => {
                 let pagadorFinanciero = g.pagadoPor;
                 let tObj = null;
@@ -1435,11 +1566,45 @@
                 }
             });
 
-            // Sumar cobros del préstamo de Maxi a las cuentas de destino
+            // 2. Sumar cobros del préstamo de Maxi a la cuenta de destino
             listaCuotasPrestamoGlobal.forEach(c => {
-                if (c.cuentaDestino === 'efectivo') egresosEfectivo -= c.monto; // Resta egreso = Suma saldo
+                if (c.cuentaDestino === 'efectivo') egresosEfectivo -= c.monto;
                 else if (c.cuentaDestino === 'galicia') egresosGalicia -= c.monto;
                 else if (c.cuentaDestino === 'mp') egresosMP -= c.monto;
+            });
+
+            // 3. Impactar traspasos entre cuentas propias del mes
+            listaTraspasosGlobal.forEach(t => {
+                const periodoT = t.periodo || (t.fecha ? t.fecha.toDate().toISOString().slice(0, 7) : periodoActual);
+                if (periodoT === periodoActual) {
+                    // Resta en origen
+                    if (t.origen === 'efectivo') egresosEfectivo += t.monto;
+                    else if (t.origen === 'galicia') egresosGalicia += t.monto;
+                    else if (t.origen === 'mp') egresosMP += t.monto;
+
+                    // Suma en destino
+                    if (t.destino === 'efectivo') egresosEfectivo -= t.monto;
+                    else if (t.destino === 'galicia') egresosGalicia -= t.monto;
+                    else if (t.destino === 'mp') egresosMP -= t.monto;
+                }
+            });
+
+            // 4. Impactar pagos de tarjeta del mes
+            let totalPagadoPropia = 0;
+            let totalPagadoExtension = 0;
+
+            listaPagosTarjetasGlobal.forEach(p => {
+                const periodoP = p.periodo || (p.fecha ? p.fecha.toDate().toISOString().slice(0, 7) : periodoActual);
+                if (periodoP === periodoActual) {
+                    // Resta liquidez de la cuenta con la que se pagó
+                    if (p.cuentaLiquidadora === 'efectivo') egresosEfectivo += p.monto;
+                    else if (p.cuentaLiquidadora === 'galicia') egresosGalicia += p.monto;
+                    else if (p.cuentaLiquidadora === 'mp') egresosMP += p.monto;
+
+                    // Descuenta deuda acumulada en la tarjeta correspondiente
+                    if (p.tarjetaTipo === 'extension') totalPagadoExtension += p.monto;
+                    else totalPagadoPropia += p.monto;
+                }
             });
 
             const dispEfectivo = bEfectivo - egresosEfectivo;
@@ -1452,10 +1617,13 @@
             document.getElementById('disp-mp').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispMP);
             document.getElementById('disp-total-liquidez').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispTotal);
 
-            // Desglose de tarjetas a pagar
-            document.getElementById('credito-propio').textContent = "$" + new Intl.NumberFormat('es-AR').format(egresosTarjetaPropia);
-            document.getElementById('credito-extension').textContent = "$" + new Intl.NumberFormat('es-AR').format(egresosTarjetaExtension);
-            document.getElementById('credito-total-tarjetas').textContent = "$" + new Intl.NumberFormat('es-AR').format(egresosTarjetaPropia + egresosTarjetaExtension);
+            // Deuda pendiente neta en tarjetas
+            const deudaPropiaNeta = Math.max(0, egresosTarjetaPropia - totalPagadoPropia);
+            const deudaExtensionNeta = Math.max(0, egresosTarjetaExtension - totalPagadoExtension);
+
+            document.getElementById('credito-propio').textContent = "$" + new Intl.NumberFormat('es-AR').format(deudaPropiaNeta);
+            document.getElementById('credito-extension').textContent = "$" + new Intl.NumberFormat('es-AR').format(deudaExtensionNeta);
+            document.getElementById('credito-total-tarjetas').textContent = "$" + new Intl.NumberFormat('es-AR').format(deudaPropiaNeta + deudaExtensionNeta);
         };
     </script>
 
