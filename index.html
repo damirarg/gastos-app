@@ -288,10 +288,10 @@
                 <section id="seccion-privada-personal" class="card card-privada">
                     <h2>🔒 Control de Liquidez y Cuentas Personales (<span id="nombre-privado-titular">Usuario</span>)</h2>
                     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
-                        Ingresá tus saldos base de cada cuenta (podés ingresar valores negativos con el signo -). Cada consumo restará en tiempo real.
+                        Ingresá tus saldos base de cada cuenta (admiten valores negativos). Cada gasto por transferencia o efectivo restará de la cuenta según la fecha real de la operación.
                     </p>
                     
-                    <!-- TRES CUENTAS INDEPENDIENTES (ADMITEN NEGATIVOS) -->
+                    <!-- TRES CUENTAS INDEPENDIENTES -->
                     <div class="grid-3" style="margin-bottom: 16px;">
                         <div class="form-group">
                             <label for="saldo-base-efectivo">💵 Saldo Base Efectivo ($)</label>
@@ -321,7 +321,7 @@
                         <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px; color: var(--accent-color);">🔄 Movimiento / Transferencia entre Cuentas Propias</h3>
                         <form id="form-traspaso-cuentas">
                             <div class="grid-4">
-                                <div class="form-group"><label>Fecha</label><input type="date" id="traspaso-fecha" required></div>
+                                <div class="form-group"><label>Fecha Operación</label><input type="date" id="traspaso-fecha" required></div>
                                 <div class="form-group">
                                     <label>Desde Cuenta Origen (Resta)</label>
                                     <select id="traspaso-origen">
@@ -923,7 +923,7 @@
             if (confirm("¿Borrar este medio de pago?")) { await deleteDoc(doc(db, coleccion, id)); }
         };
 
-        // INGRESOS Y SALDOS BASE DE LAS TRES CUENTAS EN FIREBASE (SOPORTA VALORES NEGATIVOS)
+        // INGRESOS Y SALDOS BASE DE LAS TRES CUENTAS EN FIREBASE
         async function cargarIngresosYsaldoDelMes() {
             const mes = filtroMesInput.value;
             const docRef = doc(db, "ingresos", mes);
@@ -986,7 +986,6 @@
             } catch (error) { alert("Error al guardar saldos base."); btn.textContent = "💾 Guardar Saldos Base Cuentas"; btn.disabled = false; }
         });
 
-        // LÓGICA DE TRASPASOS ENTRE CUENTAS Y PAGOS DE TARJETA
         function escucharTraspasosYPagosTarjetas() {
             const qTraspasos = query(collection(db, "traspasos_cuentas"), orderBy("fecha", "desc"));
             onSnapshot(qTraspasos, (snapshot) => {
@@ -1054,7 +1053,6 @@
             } catch (error) { alert("Error al registrar el pago de tarjeta."); }
         });
 
-        // LÓGICA DE PRÉSTAMOS
         function escucharPrestamoYcuotas() {
             onSnapshot(doc(db, "configuracion", "prestamo_auto_maxi"), (docSnap) => {
                 if (docSnap.exists()) {
@@ -1524,7 +1522,7 @@
             chartPrivadoInstance = new Chart(document.getElementById('chart-categorias-privado').getContext('2d'), { type: 'doughnut', data: { labels: Object.keys(porCatPrivado), datasets: [{ data: Object.values(porCatPrivado), backgroundColor: ['#0071e3', '#34c759', '#ff9500', '#ff2d55', '#5856d6', '#af52de', '#5ac8fa', '#e57373', '#ffc107', '#4dd0e1'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } });
         }
 
-        // CÁLCULO FÍSICO DE CAJA CON TRES CUENTAS, TRASPASOS Y PAGOS DE TARJETA
+        // CÁLCULO FÍSICO DE CAJA BASADO EN LA FECHA REAL DEL MOVIMIENTO
         window.calcularDineroPersonalPrivado = function() {
             if (!auth.currentUser) return;
             const esDamian = auth.currentUser.email.toLowerCase().includes("dami");
@@ -1542,7 +1540,7 @@
             let egresosTarjetaPropia = 0;
             let egresosTarjetaExtension = 0;
 
-            // 1. Descontar consumos del mes
+            // 1. EVALUAR CONSUMOS POR FECHA FÍSICA PARA SALDOS DE CAJA
             listaGastosGlobal.forEach(g => {
                 let pagadorFinanciero = g.pagadoPor;
                 let tObj = null;
@@ -1553,30 +1551,45 @@
                 }
 
                 if (pagadorFinanciero === userActivo) {
-                    if (g.formato === 'efectivo') {
-                        egresosEfectivo += g.monto;
-                    } else if (g.formato === 'transferencia') {
-                        const cObj = listaCuentasGlobal.find(c => c.id === g.medioId);
-                        if (cObj && cObj.banco.toLowerCase().includes('mercado')) egresosMP += g.monto;
-                        else egresosGalicia += g.monto;
-                    } else if (g.formato === 'tarjeta') {
+                    const fechaObj = g.fecha ? g.fecha.toDate() : new Date();
+                    const mesRealGasto = fechaObj.toISOString().slice(0, 7);
+
+                    // Si la transferencia o efectivo se realizó en el mes en pantalla, impacta el saldo bancario hoy
+                    if (mesRealGasto === periodoActual) {
+                        if (g.formato === 'efectivo') {
+                            egresosEfectivo += g.monto;
+                        } else if (g.formato === 'transferencia') {
+                            const cObj = listaCuentasGlobal.find(c => c.id === g.medioId);
+                            if (cObj && cObj.banco.toLowerCase().includes('mercado')) egresosMP += g.monto;
+                            else egresosGalicia += g.monto;
+                        }
+                    }
+
+                    // Las tarjetas de crédito siguen agrupándose por el período de imputación del resumen
+                    const periodoGasto = g.periodo ? g.periodo : mesRealGasto;
+                    if (periodoGasto === periodoActual && g.formato === 'tarjeta') {
                         if (tObj && tObj.tipo === 'extension') egresosTarjetaExtension += g.monto;
                         else egresosTarjetaPropia += g.monto;
                     }
                 }
             });
 
-            // 2. Sumar cobros del préstamo de Maxi a la cuenta de destino
+            // 2. Sumar cobros del préstamo de Maxi por fecha real de ingreso
             listaCuotasPrestamoGlobal.forEach(c => {
-                if (c.cuentaDestino === 'efectivo') egresosEfectivo -= c.monto;
-                else if (c.cuentaDestino === 'galicia') egresosGalicia -= c.monto;
-                else if (c.cuentaDestino === 'mp') egresosMP -= c.monto;
+                const fechaObj = c.fecha ? c.fecha.toDate() : new Date();
+                const mesRealCuota = fechaObj.toISOString().slice(0, 7);
+                if (mesRealCuota === periodoActual) {
+                    if (c.cuentaDestino === 'efectivo') egresosEfectivo -= c.monto;
+                    else if (c.cuentaDestino === 'galicia') egresosGalicia -= c.monto;
+                    else if (c.cuentaDestino === 'mp') egresosMP -= c.monto;
+                }
             });
 
-            // 3. Impactar traspasos entre cuentas propias del mes
+            // 3. Impactar traspasos entre cuentas por fecha real
             listaTraspasosGlobal.forEach(t => {
-                const periodoT = t.periodo || (t.fecha ? t.fecha.toDate().toISOString().slice(0, 7) : periodoActual);
-                if (periodoT === periodoActual) {
+                const fechaObj = t.fecha ? t.fecha.toDate() : new Date();
+                const mesRealT = fechaObj.toISOString().slice(0, 7);
+                if (mesRealT === periodoActual) {
                     if (t.origen === 'efectivo') egresosEfectivo += t.monto;
                     else if (t.origen === 'galicia') egresosGalicia += t.monto;
                     else if (t.origen === 'mp') egresosMP += t.monto;
@@ -1587,13 +1600,14 @@
                 }
             });
 
-            // 4. Impactar pagos de tarjeta del mes
+            // 4. Impactar pagos de tarjeta por fecha real
             let totalPagadoPropia = 0;
             let totalPagadoExtension = 0;
 
             listaPagosTarjetasGlobal.forEach(p => {
-                const periodoP = p.periodo || (p.fecha ? p.fecha.toDate().toISOString().slice(0, 7) : periodoActual);
-                if (periodoP === periodoActual) {
+                const fechaObj = p.fecha ? p.fecha.toDate() : new Date();
+                const mesRealP = fechaObj.toISOString().slice(0, 7);
+                if (mesRealP === periodoActual) {
                     if (p.cuentaLiquidadora === 'efectivo') egresosEfectivo += p.monto;
                     else if (p.cuentaLiquidadora === 'galicia') egresosGalicia += p.monto;
                     else if (p.cuentaLiquidadora === 'mp') egresosMP += p.monto;
