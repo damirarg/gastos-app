@@ -288,22 +288,22 @@
                 <section id="seccion-privada-personal" class="card card-privada">
                     <h2>🔒 Control de Liquidez y Cuentas Personales (<span id="nombre-privado-titular">Usuario</span>)</h2>
                     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
-                        Ingresá tus saldos base de cada cuenta. Cada consumo restará en tiempo real del dinero real de la cuenta utilizada.
+                        Ingresá tus saldos base de cada cuenta (podés ingresar valores negativos con el signo -). Cada consumo restará en tiempo real.
                     </p>
                     
-                    <!-- TRES CUENTAS INDEPENDIENTES -->
+                    <!-- TRES CUENTAS INDEPENDIENTES (ADMITEN NEGATIVOS) -->
                     <div class="grid-3" style="margin-bottom: 16px;">
                         <div class="form-group">
                             <label for="saldo-base-efectivo">💵 Saldo Base Efectivo ($)</label>
-                            <input type="text" id="saldo-base-efectivo" class="monto-input" placeholder="Ej: 50.000" inputmode="numeric">
+                            <input type="text" id="saldo-base-efectivo" class="monto-input" placeholder="Ej: 50.000 o -20.000">
                         </div>
                         <div class="form-group">
                             <label for="saldo-base-galicia">🏦 Saldo Base Banco Galicia ($)</label>
-                            <input type="text" id="saldo-base-galicia" class="monto-input" placeholder="Ej: 1.500.000" inputmode="numeric">
+                            <input type="text" id="saldo-base-galicia" class="monto-input" placeholder="Ej: 1.500.000 o -100.000">
                         </div>
                         <div class="form-group">
                             <label for="saldo-base-mp">📱 Saldo Base Mercado Pago ($)</label>
-                            <input type="text" id="saldo-base-mp" class="monto-input" placeholder="Ej: 800.000" inputmode="numeric">
+                            <input type="text" id="saldo-base-mp" class="monto-input" placeholder="Ej: 800.000 o -50.000">
                         </div>
                     </div>
                     <button id="btn-guardar-saldos-base" class="btn-secundario" style="margin-bottom: 20px;">💾 Guardar Saldos Base Cuentas</button>
@@ -923,7 +923,7 @@
             if (confirm("¿Borrar este medio de pago?")) { await deleteDoc(doc(db, coleccion, id)); }
         };
 
-        // INGRESOS Y SALDOS BASE DE LAS TRES CUENTAS EN FIREBASE
+        // INGRESOS Y SALDOS BASE DE LAS TRES CUENTAS EN FIREBASE (SOPORTA VALORES NEGATIVOS)
         async function cargarIngresosYsaldoDelMes() {
             const mes = filtroMesInput.value;
             const docRef = doc(db, "ingresos", mes);
@@ -938,9 +938,9 @@
                 const sGalicia = esDamian ? (data.baseGaliciaDamian || 0) : 0;
                 const sMP = esDamian ? (data.baseMPDamian || 0) : 0;
 
-                document.getElementById('saldo-base-efectivo').value = sEfectivo ? new Intl.NumberFormat('es-AR').format(sEfectivo) : '';
-                document.getElementById('saldo-base-galicia').value = sGalicia ? new Intl.NumberFormat('es-AR').format(sGalicia) : '';
-                document.getElementById('saldo-base-mp').value = sMP ? new Intl.NumberFormat('es-AR').format(sMP) : '';
+                document.getElementById('saldo-base-efectivo').value = sEfectivo !== undefined ? (sEfectivo < 0 ? '-' : '') + new Intl.NumberFormat('es-AR').format(Math.abs(sEfectivo)) : '';
+                document.getElementById('saldo-base-galicia').value = sGalicia !== undefined ? (sGalicia < 0 ? '-' : '') + new Intl.NumberFormat('es-AR').format(Math.abs(sGalicia)) : '';
+                document.getElementById('saldo-base-mp').value = sMP !== undefined ? (sMP < 0 ? '-' : '') + new Intl.NumberFormat('es-AR').format(Math.abs(sMP)) : '';
             } else {
                 document.getElementById('sueldo-damian').value = ''; 
                 document.getElementById('sueldo-maxi').value = '';
@@ -955,8 +955,8 @@
 
         document.getElementById('btn-guardar-ingresos').addEventListener('click', async () => {
             const mes = filtroMesInput.value;
-            const sD = parseInt(document.getElementById('sueldo-damian').value.replace(/\D/g, '') || 0);
-            const sM = parseInt(document.getElementById('sueldo-maxi').value.replace(/\D/g, '') || 0);
+            const sD = obtenerNumeroLimpio('sueldo-damian');
+            const sM = obtenerNumeroLimpio('sueldo-maxi');
             try {
                 const btn = document.getElementById('btn-guardar-ingresos');
                 btn.textContent = "Guardando..."; btn.disabled = true;
@@ -968,9 +968,9 @@
 
         document.getElementById('btn-guardar-saldos-base').addEventListener('click', async () => {
             const mes = filtroMesInput.value;
-            const bEfectivo = parseInt(document.getElementById('saldo-base-efectivo').value.replace(/\D/g, '') || 0, 10);
-            const bGalicia = parseInt(document.getElementById('saldo-base-galicia').value.replace(/\D/g, '') || 0, 10);
-            const bMP = parseInt(document.getElementById('saldo-base-mp').value.replace(/\D/g, '') || 0, 10);
+            const bEfectivo = obtenerNumeroLimpio('saldo-base-efectivo');
+            const bGalicia = obtenerNumeroLimpio('saldo-base-galicia');
+            const bMP = obtenerNumeroLimpio('saldo-base-mp');
             
             const btn = document.getElementById('btn-guardar-saldos-base');
             btn.textContent = "Guardando saldos..."; btn.disabled = true;
@@ -1014,7 +1014,7 @@
             const fecha = new Date(document.getElementById('traspaso-fecha').value + "T12:00:00");
             const origen = document.getElementById('traspaso-origen').value;
             const destino = document.getElementById('traspaso-destino').value;
-            const monto = parseInt(document.getElementById('traspaso-monto').value.replace(/\D/g, ''), 10);
+            const monto = obtenerNumeroLimpio('traspaso-monto');
 
             if (origen === destino) {
                 alert("La cuenta de origen y destino deben ser diferentes.");
@@ -1036,9 +1036,9 @@
         document.getElementById('form-pago-tarjeta').addEventListener('submit', async (e) => {
             e.preventDefault();
             const fecha = new Date(document.getElementById('pago-tarjeta-fecha').value + "T12:00:00");
-            const tarjetaTipo = document.getElementById('pago-tarjeta-tipo').value; // 'propia' o 'extension'
-            const cuentaLiquidadora = document.getElementById('pago-tarjeta-cuenta').value; // 'galicia', 'mp', 'efectivo'
-            const monto = parseInt(document.getElementById('pago-tarjeta-monto').value.replace(/\D/g, ''), 10);
+            const tarjetaTipo = document.getElementById('pago-tarjeta-tipo').value;
+            const cuentaLiquidadora = document.getElementById('pago-tarjeta-cuenta').value;
+            const monto = obtenerNumeroLimpio('pago-tarjeta-monto');
 
             if (!monto || monto <= 0) return;
 
@@ -1104,7 +1104,7 @@
 
         document.getElementById('form-config-prestamo').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const montoOriginal = parseInt(document.getElementById('prestamo-monto-original').value.replace(/\D/g, ''), 10);
+            const montoOriginal = obtenerNumeroLimpio('prestamo-monto-original');
             const fechaInicio = document.getElementById('prestamo-fecha-inicio').value;
             const motivo = document.getElementById('prestamo-motivo').value;
 
@@ -1118,7 +1118,7 @@
 
         document.getElementById('form-pago-prestamo').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const montoCuota = parseInt(document.getElementById('cuota-monto').value.replace(/\D/g, ''), 10);
+            const montoCuota = obtenerNumeroLimpio('cuota-monto');
             const fechaCuota = new Date(document.getElementById('cuota-fecha').value + "T12:00:00");
             const cuentaDestino = document.getElementById('cuota-cuenta-destino').value;
 
@@ -1166,7 +1166,7 @@
         document.getElementById('form-saldar-deuda').addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!window.estadoDeudaActual) return;
-            const montoLimpio = parseInt(document.getElementById('saldar-monto').value.replace(/\D/g, ''), 10);
+            const montoLimpio = obtenerNumeroLimpio('saldar-monto');
             const medio = document.getElementById('saldar-medio').value;
             const fechaIngresada = new Date(document.getElementById('saldar-fecha').value + "T12:00:00");
             const periodoActual = filtroMesInput.value;
@@ -1308,7 +1308,7 @@
         document.getElementById('form-gasto').addEventListener('submit', async (e) => {
             e.preventDefault();
             const concepto = document.getElementById('concepto').value;
-            const montoLimpio = parseInt(document.getElementById('monto').value.replace(/\D/g, ''), 10);
+            const montoLimpio = obtenerNumeroLimpio('monto');
             const formato = document.getElementById('formato-pago').value;
             const fechaManual = document.getElementById('fecha-manual').value;
             const periodoImputacion = document.getElementById('periodo-imputacion').value;
@@ -1577,12 +1577,10 @@
             listaTraspasosGlobal.forEach(t => {
                 const periodoT = t.periodo || (t.fecha ? t.fecha.toDate().toISOString().slice(0, 7) : periodoActual);
                 if (periodoT === periodoActual) {
-                    // Resta en origen
                     if (t.origen === 'efectivo') egresosEfectivo += t.monto;
                     else if (t.origen === 'galicia') egresosGalicia += t.monto;
                     else if (t.origen === 'mp') egresosMP += t.monto;
 
-                    // Suma en destino
                     if (t.destino === 'efectivo') egresosEfectivo -= t.monto;
                     else if (t.destino === 'galicia') egresosGalicia -= t.monto;
                     else if (t.destino === 'mp') egresosMP -= t.monto;
@@ -1596,12 +1594,10 @@
             listaPagosTarjetasGlobal.forEach(p => {
                 const periodoP = p.periodo || (p.fecha ? p.fecha.toDate().toISOString().slice(0, 7) : periodoActual);
                 if (periodoP === periodoActual) {
-                    // Resta liquidez de la cuenta con la que se pagó
                     if (p.cuentaLiquidadora === 'efectivo') egresosEfectivo += p.monto;
                     else if (p.cuentaLiquidadora === 'galicia') egresosGalicia += p.monto;
                     else if (p.cuentaLiquidadora === 'mp') egresosMP += p.monto;
 
-                    // Descuenta deuda acumulada en la tarjeta correspondiente
                     if (p.tarjetaTipo === 'extension') totalPagadoExtension += p.monto;
                     else totalPagadoPropia += p.monto;
                 }
@@ -1617,7 +1613,6 @@
             document.getElementById('disp-mp').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispMP);
             document.getElementById('disp-total-liquidez').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispTotal);
 
-            // Deuda pendiente neta en tarjetas
             const deudaPropiaNeta = Math.max(0, egresosTarjetaPropia - totalPagadoPropia);
             const deudaExtensionNeta = Math.max(0, egresosTarjetaExtension - totalPagadoExtension);
 
@@ -1627,10 +1622,31 @@
         };
     </script>
 
-    <!-- FORMATEO -->
+    <!-- FORMATEO Y SOPORTE DE NÚMEROS NEGATIVOS -->
     <script>
-        function formatearMonedaEnVivo(input) { let s = input.value.replace(/\D/g, ''); input.value = s ? new Intl.NumberFormat('es-AR').format(parseInt(s, 10)) : ''; }
-        function obtenerNumeroLimpio(id) { let s = document.getElementById(id).value.replace(/\D/g, ''); return s ? parseInt(s, 10) : 0; }
+        function formatearMonedaEnVivo(input) {
+            let texto = input.value;
+            let esNegativo = texto.trim().startsWith('-');
+            let digitos = texto.replace(/\D/g, '');
+            if (!digitos) {
+                input.value = esNegativo ? '-' : '';
+                return;
+            }
+            let valorFormateado = new Intl.NumberFormat('es-AR').format(parseInt(digitos, 10));
+            input.value = esNegativo ? '-' + valorFormateado : valorFormateado;
+        }
+
+        function obtenerNumeroLimpio(id) {
+            let input = document.getElementById(id);
+            if (!input) return 0;
+            let texto = input.value.trim();
+            let esNegativo = texto.startsWith('-');
+            let digitos = texto.replace(/\D/g, '');
+            if (!digitos) return 0;
+            let num = parseInt(digitos, 10);
+            return esNegativo ? -num : num;
+        }
+
         document.querySelectorAll('.monto-input').forEach(input => {
             input.addEventListener('input', (e) => {
                 formatearMonedaEnVivo(e.target);
@@ -1638,6 +1654,7 @@
                 if (window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
             });
         });
+
         function calcularProporcionAlquiler() {
             const sD = obtenerNumeroLimpio('sueldo-damian'); const sM = obtenerNumeroLimpio('sueldo-maxi'); const t = sD + sM;
             document.getElementById('proporcion-info').textContent = t > 0 ? `📊 Proporción alquiler: Damián ${((sD/t)*100).toFixed(1)}% | Maxi ${((sM/t)*100).toFixed(1)}%` : '📊 Proporción alquiler: Damián 0% | Maxi 0%';
