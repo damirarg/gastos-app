@@ -288,7 +288,7 @@
                 <section id="seccion-privada-personal" class="card card-privada">
                     <h2>🔒 Control de Liquidez y Cuentas Personales (<span id="nombre-privado-titular">Usuario</span>)</h2>
                     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
-                        Ingresá tus saldos base de cada cuenta. Cada consumo por transferencia o efectivo descontará de la caja según la fecha real de la transacción.
+                        Ingresá tus saldos base de cada cuenta. Cada consumo por transferencia o efectivo descontará de la caja según la fecha real del movimiento.
                     </p>
                     
                     <!-- TRES CUENTAS INDEPENDIENTES -->
@@ -559,6 +559,7 @@
         }
 
         let listaGastosGlobal = [];
+        let listaGastosCompletaBase = []; // Para calcular saldos reales sin filtrar por periodo
         let listaTarjetasGlobal = [];
         let listaCuentasGlobal = [];
         let listaCuotasPrestamoGlobal = [];
@@ -1187,6 +1188,7 @@
             const q = query(collection(db, "gastos"), orderBy("fecha", "desc"));
             onSnapshot(q, (snapshot) => {
                 listaGastosGlobal = [];
+                listaGastosCompletaBase = []; // Almacena todos los documentos sin filtrar por mes para el cálculo de saldos físicos
                 const tablaComunBody = document.getElementById('tabla-gastos-body');
                 const tablaPrivadaBody = document.getElementById('tabla-gastos-privados-body');
                 tablaComunBody.innerHTML = ""; tablaPrivadaBody.innerHTML = "";
@@ -1198,8 +1200,9 @@
 
                 snapshot.forEach((docSnap) => {
                     const gasto = docSnap.data(); gasto.id = docSnap.id;
+                    listaGastosCompletaBase.push(gasto); // Se guarda para el cálculo de caja independiente del período
+
                     const fechaObj = gasto.fecha ? gasto.fecha.toDate() : new Date();
-                    
                     const periodoGasto = gasto.periodo ? gasto.periodo : fechaObj.toISOString().slice(0, 7);
 
                     if (periodoGasto === mesSeleccionado) {
@@ -1541,9 +1544,9 @@
             let egresosTarjetaPropia = 0;
             let egresosTarjetaExtension = 0;
 
-            // 1. EVALUAR CONSUMOS POR FECHA REAL DEL CALENDARIO
-            // Se leen TODOS los gastos registrados en la base de datos (independientemente del período de imputación)
-            listaGastosGlobal.forEach(g => {
+            // 1. EVALUAR TODOS LOS CONSUMOS POR SU FECHA REAL EN EL CALENDARIO
+            // Usamos la lista completa sin filtrar previamente por período imputado
+            listaGastosCompletaBase.forEach(g => {
                 let pagadorFinanciero = g.pagadoPor;
                 let tObj = null;
 
@@ -1556,7 +1559,7 @@
                     const fechaObj = g.fecha ? g.fecha.toDate() : new Date();
                     const mesRealGasto = fechaObj.toISOString().slice(0, 7);
 
-                    // Si el egreso en efectivo o transferencia ocurrió en el mes que estamos consultando en pantalla, descuenta HOY de la caja
+                    // Si el movimiento de efectivo o transferencia ocurrió en el mes en pantalla, descuenta el 100% HOY de la cuenta
                     if (mesRealGasto === periodoActual) {
                         if (g.formato === 'efectivo') {
                             egresosEfectivo += g.monto;
@@ -1570,7 +1573,7 @@
                         }
                     }
 
-                    // El compromiso de tarjeta de crédito sí se agrupa según el período asignado al resumen
+                    // El compromiso de tarjeta de crédito sí atiende al período de imputación del resumen
                     const periodoGasto = g.periodo ? g.periodo : mesRealGasto;
                     if (periodoGasto === periodoActual && g.formato === 'tarjeta') {
                         if (tObj && tObj.tipo === 'extension') egresosTarjetaExtension += g.monto;
