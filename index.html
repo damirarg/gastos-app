@@ -77,6 +77,11 @@
         .chart-container { position: relative; max-height: 260px; margin-top: 16px; }
         .acciones-celda { display: flex; gap: 4px; align-items: center; }
         .chk-tabla { width: 18px; height: 18px; cursor: pointer; }
+        .fila-duplicado td { background-color: #fff8e6; }
+        .badge-alerta { display: inline-block; margin-top: 4px; padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; background: #fff0c2; color: #8a5a00; }
+        .texto-positivo { color: var(--success-color) !important; }
+        .texto-negativo { color: var(--danger-color) !important; }
+        .texto-alerta { color: #c66900 !important; }
 
         @media (max-width: 768px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } header { flex-direction: column; gap: 12px; text-align: center; } }
     </style>
@@ -132,7 +137,10 @@
             <section class="card" style="padding: 16px 24px; margin-bottom: 20px;">
                 <div class="grid-2" style="align-items: center;">
                     <div><label for="filtro-mes">📅 Período en pantalla:</label><input type="month" id="filtro-mes" style="margin-top: 4px;"></div>
-                    <div style="text-align: right;"><span style="font-size: 13px; color: var(--text-secondary);">🟢 Sincronizado en tiempo real</span></div>
+                    <div style="text-align: right; display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <span style="font-size: 13px; color: var(--text-secondary);">🟢 Sincronizado en tiempo real</span>
+                        <button type="button" id="btn-exportar-mes" class="btn-secundario" style="width: auto; padding: 8px 14px; font-size: 13px;">⬇️ Exportar mes</button>
+                    </div>
                 </div>
             </section>
 
@@ -515,7 +523,7 @@
     <!-- CONEXIÓN FIREBASE Y LÓGICA DE NEGOCIO -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, setDoc, deleteDoc, doc, getDoc, updateDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, setDoc, deleteDoc, doc, getDoc, updateDoc, onSnapshot, query, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const firebaseConfig = {
@@ -558,6 +566,75 @@
             return email.toLowerCase().includes("dami") ? "Damian" : "Maxi";
         }
 
+        function escapeHTML(valor) {
+            return String(valor ?? '').replace(/[&<>"']/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[char]));
+        }
+
+        function escapeAttr(valor) {
+            return escapeHTML(valor).replace(/`/g, '&#96;');
+        }
+
+        function normalizarTextoComparacion(valor) {
+            return String(valor ?? '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, ' ')
+                .trim();
+        }
+
+        function fechaLocalKey(fecha) {
+            if (!fecha) return '';
+            const fechaObj = fecha.toDate ? fecha.toDate() : new Date(fecha);
+            if (isNaN(fechaObj.getTime())) return '';
+            const anio = fechaObj.getFullYear();
+            const mes = String(fechaObj.getMonth() + 1).padStart(2, '0');
+            const dia = String(fechaObj.getDate()).padStart(2, '0');
+            return `${anio}-${mes}-${dia}`;
+        }
+
+        function formatearFechaCSV(fecha) {
+            const key = fechaLocalKey(fecha);
+            if (!key) return '';
+            const [anio, mes, dia] = key.split('-');
+            return `${dia}/${mes}/${anio}`;
+        }
+
+        function valorCSV(valor) {
+            const texto = String(valor ?? '');
+            return `"${texto.replace(/"/g, '""')}"`;
+        }
+
+        function aplicarColorMonto(elemento, monto, ceroComoNeutro = true) {
+            elemento.classList.remove('texto-positivo', 'texto-negativo', 'texto-alerta');
+            if (monto > 0) elemento.classList.add('texto-positivo');
+            else if (monto < 0) elemento.classList.add('texto-negativo');
+            else if (!ceroComoNeutro) elemento.classList.add('texto-alerta');
+        }
+
+        function esPosibleDuplicadoImportacion(borrador) {
+            const fechaBorrador = fechaLocalKey(borrador.fechaObj);
+            const conceptoBorrador = normalizarTextoComparacion(borrador.concepto);
+            if (!fechaBorrador || !borrador.monto) return false;
+
+            return listaGastosCompletaBase.some((gasto) => {
+                if (Math.round(Number(gasto.monto || 0)) !== Math.round(Number(borrador.monto || 0))) return false;
+                if (fechaLocalKey(gasto.fecha) !== fechaBorrador) return false;
+
+                const conceptoGuardado = normalizarTextoComparacion(gasto.concepto);
+                if (!conceptoGuardado || !conceptoBorrador) return true;
+                return conceptoGuardado === conceptoBorrador ||
+                    conceptoGuardado.includes(conceptoBorrador) ||
+                    conceptoBorrador.includes(conceptoGuardado);
+            });
+        }
+
         let listaGastosGlobal = [];
         let listaGastosCompletaBase = []; // Para calcular saldos reales sin filtrar por periodo
         let listaTarjetasGlobal = [];
@@ -565,10 +642,42 @@
         let listaCuotasPrestamoGlobal = [];
         let listaTraspasosGlobal = [];
         let listaPagosTarjetasGlobal = [];
+        let listaBorradoresImportacion = [];
+        const suscripcionesTiempoReal = {
+            gastos: null,
+            tarjetas: null,
+            cuentas: null,
+            prestamoConfig: null,
+            cuotasPrestamo: null,
+            traspasos: null,
+            pagosTarjeta: null
+        };
         let idGastoEnEdicionPeriodo = null;
         let esEdicionMasiva = false;
         let modoSeleccionActivoComun = false;
         let modoSeleccionActivoPrivado = false;
+
+        function reemplazarSuscripcion(nombre, nuevaSuscripcion) {
+            if (suscripcionesTiempoReal[nombre]) suscripcionesTiempoReal[nombre]();
+            suscripcionesTiempoReal[nombre] = nuevaSuscripcion;
+        }
+
+        function limpiarSuscripcionesTiempoReal() {
+            Object.keys(suscripcionesTiempoReal).forEach((nombre) => {
+                if (suscripcionesTiempoReal[nombre]) {
+                    suscripcionesTiempoReal[nombre]();
+                    suscripcionesTiempoReal[nombre] = null;
+                }
+            });
+        }
+
+        async function ejecutarBatchEnBloques(items, aplicarOperacion, tamanoBloque = 450) {
+            for (let i = 0; i < items.length; i += tamanoBloque) {
+                const batch = writeBatch(db);
+                items.slice(i, i + tamanoBloque).forEach((item) => aplicarOperacion(batch, item));
+                await batch.commit();
+            }
+        }
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -584,6 +693,7 @@
                 escucharPrestamoYcuotas();
                 escucharTraspasosYPagosTarjetas();
             } else {
+                limpiarSuscripcionesTiempoReal();
                 pantallaLoginWrapper.classList.remove('oculto');
                 seccionApp.classList.add('oculto');
             }
@@ -598,6 +708,8 @@
         });
 
         document.getElementById('btn-logout').addEventListener('click', () => signOut(auth));
+
+        document.getElementById('btn-exportar-mes').addEventListener('click', () => exportarMesActualCSV());
 
         window.cambiarVista = function(idVista, boton) {
             document.querySelectorAll('.modulo-vista').forEach(v => v.classList.add('oculto'));
@@ -734,10 +846,9 @@
                 const todos = [...seleccionadosComun, ...seleccionadosPriv];
 
                 try {
-                    for (let chk of todos) {
-                        const idGasto = chk.value;
-                        await updateDoc(doc(db, "gastos", idGasto), { periodo: nuevoPeriodo });
-                    }
+                    await ejecutarBatchEnBloques(todos, (batch, chk) => {
+                        batch.update(doc(db, "gastos", chk.value), { periodo: nuevoPeriodo });
+                    });
                     cerrarModalReimputar();
                 } catch (error) { alert("Error al procesar la reimputación masiva."); }
             } else if (idGastoEnEdicionPeriodo) {
@@ -759,9 +870,9 @@
 
             if (confirm(`¿Estás seguro de que querés borrar permanentemente los ${seleccionados.length} gastos seleccionados?`)) {
                 try {
-                    for (let chk of seleccionados) {
-                        await deleteDoc(doc(db, "gastos", chk.value));
-                    }
+                    await ejecutarBatchEnBloques([...seleccionados], (batch, chk) => {
+                        batch.delete(doc(db, "gastos", chk.value));
+                    });
                 } catch (error) { alert("Error al eliminar los gastos seleccionados."); }
             }
         };
@@ -882,13 +993,13 @@
 
             listaTarjetasGlobal.forEach(t => {
                 const desc = t.tipo === 'extension' ? '(Extensión)' : '(Propia)';
-                selectImp.innerHTML += `<option value="tarjeta_${t.id}">💳 ${t.marca} - ${t.titular} ${desc}</option>`;
-                optFiltros += `<option value="${t.id}">💳 ${t.marca} (${t.titular} - ${desc})</option>`;
+                selectImp.innerHTML += `<option value="tarjeta_${escapeAttr(t.id)}">💳 ${escapeHTML(t.marca)} - ${escapeHTML(t.titular)} ${desc}</option>`;
+                optFiltros += `<option value="${escapeAttr(t.id)}">💳 ${escapeHTML(t.marca)} (${escapeHTML(t.titular)} - ${desc})</option>`;
             });
 
             listaCuentasGlobal.forEach(c => {
-                selectImp.innerHTML += `<option value="cuenta_${c.id}">🏦 ${c.banco} - ${c.titular}</option>`;
-                optFiltros += `<option value="${c.id}">🏦 ${c.banco} (${c.titular})</option>`;
+                selectImp.innerHTML += `<option value="cuenta_${escapeAttr(c.id)}">🏦 ${escapeHTML(c.banco)} - ${escapeHTML(c.titular)}</option>`;
+                optFiltros += `<option value="${escapeAttr(c.id)}">🏦 ${escapeHTML(c.banco)} (${escapeHTML(c.titular)})</option>`;
             });
 
             document.getElementById('medio-comun').innerHTML = optFiltros;
@@ -897,27 +1008,72 @@
             actualizarFiltrosMedioPago();
         }
 
+        function describirMedioPago(gasto) {
+            if (gasto.formato === 'tarjeta' && gasto.medioId) {
+                const tarjeta = listaTarjetasGlobal.find(t => t.id === gasto.medioId);
+                if (tarjeta) return `${tarjeta.marca} ${tarjeta.titular} ${tarjeta.tipo === 'extension' ? 'Extension' : 'Propia'}`;
+            }
+            if (gasto.formato === 'transferencia' && gasto.medioId) {
+                const cuenta = listaCuentasGlobal.find(c => c.id === gasto.medioId);
+                if (cuenta) return `${cuenta.banco} ${cuenta.titular}`;
+            }
+            return gasto.formato || 'efectivo';
+        }
+
+        function exportarMesActualCSV() {
+            if (listaGastosGlobal.length === 0) {
+                alert("No hay gastos para exportar en el período seleccionado.");
+                return;
+            }
+
+            const encabezado = ['Fecha', 'Periodo', 'Concepto', 'Categoria', 'Pagado por', 'Tipo reparto', 'Formato', 'Medio', 'Monto'];
+            const filas = listaGastosGlobal.map((gasto) => [
+                formatearFechaCSV(gasto.fecha),
+                gasto.periodo || filtroMesInput.value,
+                gasto.concepto || '',
+                gasto.categoria || '',
+                gasto.pagadoPor || '',
+                gasto.tipoReparto || '',
+                gasto.formato || '',
+                describirMedioPago(gasto),
+                gasto.monto || 0
+            ]);
+
+            const contenido = [encabezado, ...filas]
+                .map((fila) => fila.map(valorCSV).join(','))
+                .join('\n');
+            const blob = new Blob([`\ufeff${contenido}`], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `gastos-${filtroMesInput.value}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        }
+
         function escucharTarjetasYcuentas() {
-            onSnapshot(collection(db, "tarjetas"), (snapshot) => {
+            reemplazarSuscripcion('tarjetas', onSnapshot(collection(db, "tarjetas"), (snapshot) => {
                 listaTarjetasGlobal = [];
                 const contListaT = document.getElementById('lista-tarjetas'); contListaT.innerHTML = ""; 
                 snapshot.forEach((docSnap) => {
                     const t = docSnap.data(); t.id = docSnap.id; listaTarjetasGlobal.push(t);
                     const desc = t.tipo === 'extension' ? '(Extensión)' : '(Propia)';
-                    contListaT.innerHTML += `<div class="tarjeta-item"><span>💳 <strong>${t.marca}</strong> - ${t.titular} <small>${desc}</small> (**** ${t.ultimos4})</span><button class="btn-eliminar" onclick="eliminarMedio('tarjetas', '${t.id}')">🗑️</button></div>`;
+                    contListaT.innerHTML += `<div class="tarjeta-item"><span>💳 <strong>${escapeHTML(t.marca)}</strong> - ${escapeHTML(t.titular)} <small>${desc}</small> (**** ${escapeHTML(t.ultimos4)})</span><button class="btn-eliminar" onclick="eliminarMedio('tarjetas', '${escapeAttr(t.id)}')">🗑️</button></div>`;
                 });
                 renderizarDropdownsMedios();
-            });
+            }));
 
-            onSnapshot(collection(db, "cuentas"), (snapshot) => {
+            reemplazarSuscripcion('cuentas', onSnapshot(collection(db, "cuentas"), (snapshot) => {
                 listaCuentasGlobal = [];
                 const contListaC = document.getElementById('lista-cuentas'); contListaC.innerHTML = "";
                 snapshot.forEach((docSnap) => {
                     const c = docSnap.data(); c.id = docSnap.id; listaCuentasGlobal.push(c);
-                    contListaC.innerHTML += `<div class="tarjeta-item"><span>🏦 <strong>${c.banco}</strong> - ${c.titular}</span><button class="btn-eliminar" onclick="eliminarMedio('cuentas', '${c.id}')">🗑️</button></div>`;
+                    contListaC.innerHTML += `<div class="tarjeta-item"><span>🏦 <strong>${escapeHTML(c.banco)}</strong> - ${escapeHTML(c.titular)}</span><button class="btn-eliminar" onclick="eliminarMedio('cuentas', '${escapeAttr(c.id)}')">🗑️</button></div>`;
                 });
                 renderizarDropdownsMedios();
-            });
+            }));
         }
 
         window.eliminarMedio = async function(coleccion, id) {
@@ -989,24 +1145,24 @@
 
         function escucharTraspasosYPagosTarjetas() {
             const qTraspasos = query(collection(db, "traspasos_cuentas"), orderBy("fecha", "desc"));
-            onSnapshot(qTraspasos, (snapshot) => {
+            reemplazarSuscripcion('traspasos', onSnapshot(qTraspasos, (snapshot) => {
                 listaTraspasosGlobal = [];
                 snapshot.forEach((docSnap) => {
                     const t = docSnap.data(); t.id = docSnap.id;
                     listaTraspasosGlobal.push(t);
                 });
                 if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
-            });
+            }));
 
             const qPagos = query(collection(db, "pagos_tarjeta"), orderBy("fecha", "desc"));
-            onSnapshot(qPagos, (snapshot) => {
+            reemplazarSuscripcion('pagosTarjeta', onSnapshot(qPagos, (snapshot) => {
                 listaPagosTarjetasGlobal = [];
                 snapshot.forEach((docSnap) => {
                     const p = docSnap.data(); p.id = docSnap.id;
                     listaPagosTarjetasGlobal.push(p);
                 });
                 if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
-            });
+            }));
         }
 
         document.getElementById('form-traspaso-cuentas').addEventListener('submit', async (e) => {
@@ -1056,7 +1212,7 @@
 
         // LÓGICA DE PRÉSTAMOS
         function escucharPrestamoYcuotas() {
-            onSnapshot(doc(db, "configuracion", "prestamo_auto_maxi"), (docSnap) => {
+            reemplazarSuscripcion('prestamoConfig', onSnapshot(doc(db, "configuracion", "prestamo_auto_maxi"), (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     document.getElementById('prestamo-monto-original').value = new Intl.NumberFormat('es-AR').format(data.montoOriginal || 0);
@@ -1064,10 +1220,10 @@
                     document.getElementById('prestamo-motivo').value = data.motivo || "Préstamo Compra Auto Maxi";
                 }
                 recalcularTotalesPrestamo();
-            });
+            }));
 
             const q = query(collection(db, "cuotas_prestamo"), orderBy("fecha", "desc"));
-            onSnapshot(q, (snapshot) => {
+            reemplazarSuscripcion('cuotasPrestamo', onSnapshot(q, (snapshot) => {
                 listaCuotasPrestamoGlobal = [];
                 const tbody = document.getElementById('tabla-prestamo-cuotas-body');
                 tbody.innerHTML = "";
@@ -1086,7 +1242,7 @@
                     tbody.innerHTML += `
                         <tr>
                             <td>${fechaFmt}</td>
-                            <td>${cuota.motivo || "Pago cuota auto"}</td>
+                            <td>${escapeHTML(cuota.motivo || "Pago cuota auto")}</td>
                             <td><span class="badge-pagado">${cuentaFmt}</span></td>
                             <td><strong>$${new Intl.NumberFormat('es-AR').format(cuota.monto)}</strong></td>
                             <td><button class="btn-eliminar" onclick="eliminarCuotaPrestamo('${cuota.id}')">🗑️</button></td>
@@ -1099,7 +1255,7 @@
 
                 recalcularTotalesPrestamo();
                 if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
-            });
+            }));
         }
 
         document.getElementById('form-config-prestamo').addEventListener('submit', async (e) => {
@@ -1186,7 +1342,7 @@
 
         function escucharGastosEnTiempoReal() {
             const q = query(collection(db, "gastos"), orderBy("fecha", "desc"));
-            onSnapshot(q, (snapshot) => {
+            reemplazarSuscripcion('gastos', onSnapshot(q, (snapshot) => {
                 listaGastosGlobal = [];
                 listaGastosCompletaBase = []; // Almacena todos los documentos sin filtrar por mes para el cálculo de saldos físicos
                 const tablaComunBody = document.getElementById('tabla-gastos-body');
@@ -1209,8 +1365,14 @@
                         listaGastosGlobal.push(gasto);
                         const fechaFormateada = fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
                         const montoFormateado = new Intl.NumberFormat('es-AR').format(gasto.monto);
+                        const conceptoSeguro = escapeHTML(gasto.concepto || 'Sin concepto');
+                        const conceptoAttr = escapeAttr((gasto.concepto || '').toLowerCase());
+                        const categoriaSegura = escapeHTML(gasto.categoria || 'Sin categoria');
+                        const categoriaAttr = escapeAttr(gasto.categoria || '');
+                        const pagadoPorSeguro = escapeHTML(gasto.pagadoPor || '');
 
                         let medioFiltroVal = gasto.medioId ? gasto.medioId : gasto.formato;
+                        const medioAttr = escapeAttr(medioFiltroVal);
                         let valorSeleccionadoActual = gasto.medioId ? `${gasto.formato === 'tarjeta' ? 'tarjeta_' : 'cuenta_'}${gasto.medioId}` : 'efectivo';
 
                         let selectMedioTablaHTML = `<select class="mini-select" onchange="actualizarMedioGasto('${gasto.id}', this.value)">`;
@@ -1220,13 +1382,13 @@
                             const val = `tarjeta_${t.id}`;
                             const isSelected = (val === valorSeleccionadoActual) ? 'selected' : '';
                             const desc = t.tipo === 'extension' ? 'Ext' : 'Propia';
-                            selectMedioTablaHTML += `<option value="${val}" ${isSelected}>💳 ${t.marca} (${desc})</option>`;
+                            selectMedioTablaHTML += `<option value="${escapeAttr(val)}" ${isSelected}>💳 ${escapeHTML(t.marca)} (${desc})</option>`;
                         });
 
                         listaCuentasGlobal.forEach(c => {
                             const val = `cuenta_${c.id}`;
                             const isSelected = (val === valorSeleccionadoActual) ? 'selected' : '';
-                            selectMedioTablaHTML += `<option value="${val}" ${isSelected}>🏦 ${c.banco}</option>`;
+                            selectMedioTablaHTML += `<option value="${escapeAttr(val)}" ${isSelected}>🏦 ${escapeHTML(c.banco)}</option>`;
                         });
                         selectMedioTablaHTML += `</select>`;
 
@@ -1251,11 +1413,11 @@
                             if (gasto.tipoReparto === 'devolucion') { selectRepartoHTML = `<span class="badge-pagado">🤝 Liquidación</span>`; }
 
                             tablaComunBody.innerHTML += `
-                                <tr data-concepto="${gasto.concepto.toLowerCase()}" data-categoria="${gasto.categoria}" data-medio="${medioFiltroVal}">
+                                <tr data-concepto="${conceptoAttr}" data-categoria="${categoriaAttr}" data-medio="${medioAttr}">
                                     ${colChkComun}
                                     <td>${fechaFormateada}</td>
-                                    <td><strong>${gasto.concepto}</strong> <br><small style="color:var(--text-secondary);">${gasto.categoria}</small></td>
-                                    <td><span class="badge-pagado">${gasto.pagadoPor}</span></td>
+                                    <td><strong>${conceptoSeguro}</strong> <br><small style="color:var(--text-secondary);">${categoriaSegura}</small></td>
+                                    <td><span class="badge-pagado">${pagadoPorSeguro}</span></td>
                                     <td>${selectMedioTablaHTML}</td>
                                     <td>${selectRepartoHTML}</td>
                                     <td><strong>$${montoFormateado}</strong></td>
@@ -1279,10 +1441,10 @@
                             selectCatHTML += `</select>`;
 
                             tablaPrivadaBody.innerHTML += `
-                                <tr data-concepto="${gasto.concepto.toLowerCase()}" data-categoria="${gasto.categoria}" data-medio="${medioFiltroVal}">
+                                <tr data-concepto="${conceptoAttr}" data-categoria="${categoriaAttr}" data-medio="${medioAttr}">
                                     ${colChkPriv}
                                     <td>${fechaFormateada}</td>
-                                    <td><strong>${gasto.concepto}</strong></td>
+                                    <td><strong>${conceptoSeguro}</strong></td>
                                     <td>${selectRepartoPrivadoHTML}</td>
                                     <td>${selectCatHTML}</td>
                                     <td>${selectMedioTablaHTML}</td>
@@ -1302,7 +1464,7 @@
                 recalcularBalanceNeteado();
                 calcularDineroPersonalPrivado();
                 actualizarGraficosDashboard();
-            });
+            }));
         }
 
         window.eliminarGasto = async function(id) { if (confirm("¿Borrar este gasto o pago?")) await deleteDoc(doc(db, "gastos", id)); };
@@ -1358,30 +1520,72 @@
                     if (cObj) pDefecto = cObj.titular === "Maxi" ? "Maxi" : "Damian";
                 }
 
-                let optCats = ''; categoriasPorTipo['comun'].forEach(cat => { optCats += `<option value="${cat}">${cat}</option>`; });
+                listaBorradoresImportacion = consumos;
+
+                let optCats = ''; categoriasPorTipo['comun'].forEach(cat => { optCats += `<option value="${escapeAttr(cat)}">${escapeHTML(cat)}</option>`; });
                 let optMedios = `<option value="efectivo">💵 Efectivo / Otra</option>`;
                 listaTarjetasGlobal.forEach(t => { 
                     const selected = medioImportacion === `tarjeta_${t.id}` ? 'selected' : '';
-                    optMedios += `<option value="tarjeta_${t.id}" ${selected}>💳 ${t.marca} - ${t.titular}</option>`; 
+                    optMedios += `<option value="tarjeta_${escapeAttr(t.id)}" ${selected}>💳 ${escapeHTML(t.marca)} - ${escapeHTML(t.titular)}</option>`;
                 });
                 listaCuentasGlobal.forEach(c => { 
                     const selected = medioImportacion === `cuenta_${c.id}` ? 'selected' : '';
-                    optMedios += `<option value="cuenta_${c.id}" ${selected}>🏦 ${c.banco} - ${c.titular}</option>`; 
+                    optMedios += `<option value="cuenta_${escapeAttr(c.id)}" ${selected}>🏦 ${escapeHTML(c.banco)} - ${escapeHTML(c.titular)}</option>`;
                 });
 
                 consumos.forEach((c, i) => {
                     const tr = document.createElement('tr');
+                    const posibleDuplicado = esPosibleDuplicadoImportacion(c);
+                    if (posibleDuplicado) tr.classList.add('fila-duplicado');
+                    const avisoDuplicado = posibleDuplicado ? '<br><span class="badge-alerta">Posible duplicado</span>' : '';
                     tr.innerHTML = `
-                        <td>${c.fecha}</td><td><strong>${c.concepto}</strong></td><td>$${new Intl.NumberFormat('es-AR').format(c.monto)}</td>
+                        <td>${escapeHTML(c.fecha)}</td><td><strong>${escapeHTML(c.concepto)}</strong>${avisoDuplicado}</td><td>$${new Intl.NumberFormat('es-AR').format(c.monto)}</td>
                         <td><select class="mini-select" id="reparto-borrador-${i}" onchange="actualizarCategoriasFilaBorrador(${i})"><option value="comun" selected>Común</option><option value="privado">Personal</option><option value="proporcional">Alquiler %</option></select></td>
                         <td><select class="mini-select" id="cat-borrador-${i}">${optCats}</select></td>
                         <td><select class="mini-select" id="pagador-borrador-${i}"><option value="Damian" ${pDefecto === 'Damian' ? 'selected' : ''}>Damián</option><option value="Maxi" ${pDefecto === 'Maxi' ? 'selected' : ''}>Maxi</option></select></td>
                         <td><select class="mini-select" id="medio-borrador-${i}">${optMedios}</select></td>
-                        <td><button class="btn-accion-rapida" onclick="confirmarGastoBorrador('${c.concepto}', ${c.monto}, ${i}, this)">+ Agregar</button></td>`;
+                        <td><button class="btn-accion-rapida" onclick="confirmarGastoBorrador(${i}, this)">+ Agregar</button></td>`;
                     tbody.appendChild(tr);
                 });
             } catch (error) { alert("Error al leer la planilla."); } finally { btn.disabled = false; }
         });
+
+        function normalizarFechaImportada(valor) {
+            const fallback = new Date();
+            fallback.setHours(12, 0, 0, 0);
+
+            let fecha = null;
+            if (valor instanceof Date) {
+                fecha = new Date(valor);
+            } else if (typeof valor === 'number') {
+                const excelDate = XLSX.SSF.parse_date_code(valor);
+                if (excelDate) fecha = new Date(excelDate.y, excelDate.m - 1, excelDate.d, 12, 0, 0, 0);
+            } else if (typeof valor === 'string') {
+                const texto = valor.trim();
+                const matchDMY = texto.match(/^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?$/);
+                const matchYMD = texto.match(/^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})$/);
+
+                if (matchDMY) {
+                    const anioActual = new Date().getFullYear();
+                    let anio = matchDMY[3] ? Number(matchDMY[3]) : anioActual;
+                    if (anio < 100) anio += 2000;
+                    fecha = new Date(anio, Number(matchDMY[2]) - 1, Number(matchDMY[1]), 12, 0, 0, 0);
+                } else if (matchYMD) {
+                    fecha = new Date(Number(matchYMD[1]), Number(matchYMD[2]) - 1, Number(matchYMD[3]), 12, 0, 0, 0);
+                } else {
+                    const parseada = new Date(texto);
+                    if (!isNaN(parseada.getTime())) fecha = parseada;
+                }
+            }
+
+            if (!fecha || isNaN(fecha.getTime())) fecha = fallback;
+            fecha.setHours(12, 0, 0, 0);
+
+            return {
+                fechaObj: fecha,
+                texto: fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            };
+        }
 
         function procesarExcelOCSV(file) {
             return new Promise((resolve, reject) => {
@@ -1411,8 +1615,7 @@
                         const fila = jsonRows[i]; if (!fila || fila.length === 0) continue;
                         let concepto = String(fila[colConcepto] || fila[1] || fila[0] || 'Consumo').trim();
                         let fechaGasto = fila[colFecha];
-                        let fechaFormateada = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
-                        if (fechaGasto) fechaFormateada = String(fechaGasto).trim();
+                        const fechaNormalizada = normalizarFechaImportada(fechaGasto);
 
                         let montoVal = fila[colMonto] !== undefined ? fila[colMonto] : fila[fila.length - 1];
                         let montoNumerico = 0;
@@ -1427,17 +1630,26 @@
                         if (!isNaN(montoNumerico) && montoNumerico > 0) {
                             const montoLimpio = Math.round(montoNumerico);
                             if (concepto.toUpperCase().includes('SU PAGO') || concepto.toUpperCase().includes('PAGO DE TARJETA')) continue; 
-                            consumos.push({ fecha: fechaFormateada, concepto: concepto, monto: montoLimpio });
+                            consumos.push({ fecha: fechaNormalizada.texto, fechaObj: fechaNormalizada.fechaObj, concepto: concepto, monto: montoLimpio });
                         }
                     }
                     resolve(consumos);
                 };
+                reader.onerror = () => reject(reader.error);
                 reader.readAsArrayBuffer(file);
             });
         }
 
-        window.confirmarGastoBorrador = async function(concepto, monto, index, boton) {
+        window.confirmarGastoBorrador = async function(index, boton) {
             try {
+                const borrador = listaBorradoresImportacion[index];
+                if (!borrador) {
+                    alert("No se encontró el consumo del borrador.");
+                    return;
+                }
+                if (esPosibleDuplicadoImportacion(borrador) && !confirm("Este consumo parece estar cargado previamente. ¿Querés agregarlo igual?")) {
+                    return;
+                }
                 const medioSeleccionado = document.getElementById(`medio-borrador-${index}`).value;
                 let formato = 'efectivo'; let medioId = '';
                 
@@ -1445,9 +1657,9 @@
                 else if (medioSeleccionado.startsWith('cuenta_')) { formato = 'transferencia'; medioId = medioSeleccionado.replace('cuenta_', ''); }
 
                 await addDoc(collection(db, "gastos"), {
-                    concepto: concepto, monto: monto, categoria: document.getElementById(`cat-borrador-${index}`).value,
+                    concepto: borrador.concepto, monto: borrador.monto, categoria: document.getElementById(`cat-borrador-${index}`).value,
                     pagadoPor: document.getElementById(`pagador-borrador-${index}`).value, tipoReparto: document.getElementById(`reparto-borrador-${index}`).value,
-                    formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: new Date(),
+                    formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: borrador.fechaObj || new Date(),
                     periodo: filtroMesInput.value
                 });
                 boton.parentElement.innerHTML = `<span style="color: var(--success-color); font-weight: bold;">✓ Agregado</span>`;
@@ -1489,12 +1701,18 @@
 
             if (Math.abs(balanceNetoDamian) < 1) { 
                 resTexto.textContent = "🎉 ¡Las cuentas están perfectamente al día!"; estMetrica.textContent = "Al día";
+                estMetrica.classList.remove('texto-positivo', 'texto-negativo', 'texto-alerta');
+                estMetrica.classList.add('texto-positivo');
                 btnAbrirSaldar.classList.add('oculto'); contSaldar.classList.add('oculto'); window.estadoDeudaActual = null;
             } else if (balanceNetoDamian > 0) { 
                 resTexto.textContent = `👉 Maxi le debe $${new Intl.NumberFormat('es-AR').format(Math.round(balanceNetoDamian))} a Damián`; estMetrica.textContent = `Maxi debe $${new Intl.NumberFormat('es-AR').format(Math.round(balanceNetoDamian))}`; 
+                estMetrica.classList.remove('texto-positivo', 'texto-negativo', 'texto-alerta');
+                estMetrica.classList.add('texto-alerta');
                 btnAbrirSaldar.classList.remove('oculto'); window.estadoDeudaActual = { deudor: 'Maxi', monto: Math.round(balanceNetoDamian) };
             } else { 
                 resTexto.textContent = `👉 Damián le debe $${new Intl.NumberFormat('es-AR').format(Math.round(Math.abs(balanceNetoDamian)))} a Maxi`; estMetrica.textContent = `Dami debe $${new Intl.NumberFormat('es-AR').format(Math.round(Math.abs(balanceNetoDamian)))}`; 
+                estMetrica.classList.remove('texto-positivo', 'texto-negativo', 'texto-alerta');
+                estMetrica.classList.add('texto-alerta');
                 btnAbrirSaldar.classList.remove('oculto'); window.estadoDeudaActual = { deudor: 'Damian', monto: Math.round(Math.abs(balanceNetoDamian)) };
             }
         };
@@ -1630,10 +1848,19 @@
             const dispMP = bMP - egresosMP;
             const dispTotal = dispEfectivo + dispGalicia + dispMP;
 
-            document.getElementById('disp-efectivo').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispEfectivo);
-            document.getElementById('disp-galicia').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispGalicia);
-            document.getElementById('disp-mp').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispMP);
-            document.getElementById('disp-total-liquidez').textContent = "$" + new Intl.NumberFormat('es-AR').format(dispTotal);
+            const elDispEfectivo = document.getElementById('disp-efectivo');
+            const elDispGalicia = document.getElementById('disp-galicia');
+            const elDispMP = document.getElementById('disp-mp');
+            const elDispTotal = document.getElementById('disp-total-liquidez');
+
+            elDispEfectivo.textContent = "$" + new Intl.NumberFormat('es-AR').format(dispEfectivo);
+            elDispGalicia.textContent = "$" + new Intl.NumberFormat('es-AR').format(dispGalicia);
+            elDispMP.textContent = "$" + new Intl.NumberFormat('es-AR').format(dispMP);
+            elDispTotal.textContent = "$" + new Intl.NumberFormat('es-AR').format(dispTotal);
+            aplicarColorMonto(elDispEfectivo, dispEfectivo);
+            aplicarColorMonto(elDispGalicia, dispGalicia);
+            aplicarColorMonto(elDispMP, dispMP);
+            aplicarColorMonto(elDispTotal, dispTotal);
 
             const deudaPropiaNeta = Math.max(0, egresosTarjetaPropia - totalPagadoPropia);
             const deudaExtensionNeta = Math.max(0, egresosTarjetaExtension - totalPagadoExtension);
