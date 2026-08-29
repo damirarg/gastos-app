@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userId() {
+      return request.auth.token.email.matches('.*maxi.*') ? 'maxi' : 'damian';
+    }
+
+    function canReadGasto() {
+      return !resource.data.esPrivado ||
+        resource.data.owner == 'hogar' ||
+        resource.data.owner == userId();
+    }
+
+    function canWriteGasto() {
+      return !request.resource.data.esPrivado ||
+        request.resource.data.owner == userId();
+    }
+
+    match /gastos/{gastoId} {
+      allow read: if signedIn() && canReadGasto();
+      allow create, update: if signedIn() && canWriteGasto();
+      allow delete: if signedIn() && canReadGasto();
+    }
+
+    match /{document=**} {
+      allow read, write: if signedIn();
+    }
+  }
+}

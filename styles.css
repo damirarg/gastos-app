@@ -49,6 +49,10 @@ button:hover { background-color: var(--accent-hover); } .btn-secundario { backgr
 .input-con-boton { display: grid; grid-template-columns: 1fr 44px; gap: 8px; }
 .input-con-boton button { padding: 0; }
 .panel-simple { background: #fff; border: 1px solid var(--border-color); border-radius: 14px; padding: 16px; margin-bottom: 24px; }
+.zona-captura { margin-top: 18px; padding: 18px; border: 1px dashed #8bbf8f; border-radius: 14px; background: rgba(255, 255, 255, 0.7); display: grid; gap: 8px; color: var(--text-secondary); }
+.zona-captura strong { color: var(--text-primary); font-size: 15px; }
+.zona-captura input { background: #fff; }
+.zona-captura:focus { border-color: var(--accent-color); box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12); }
 .btn-accion-rapida { padding: 6px 12px; font-size: 12px; border-radius: 8px; width: auto; }
 .btn-editar-icono { background: none; border: none; cursor: pointer; font-size: 15px; opacity: 0.6; transition: opacity 0.2s, transform 0.2s; padding: 2px 4px; width: auto; display: inline-block; color: inherit; }
 .btn-editar-icono:hover { opacity: 1; transform: scale(1.2); }
@@ -77,6 +81,7 @@ button:hover { background-color: var(--accent-hover); } .btn-secundario { backgr
 .info-proporcion { font-size: 14px; font-weight: 500; color: var(--accent-color); margin-top: 10px; background-color: #eef7ff; padding: 10px 14px; border-radius: 10px; display: inline-block; }
 .tarjeta-item { background: #fff; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 select.mini-select { padding: 6px 10px; font-size: 12px; border-radius: 8px; width: 100%; max-width: 150px; }
+input.mini-input { padding: 6px 10px; font-size: 12px; border-radius: 8px; min-width: 120px; }
 .metric-card { background: #fafafa; border-radius: 14px; padding: 16px 20px; border: 1px solid var(--border-color); text-align: center; } .metric-val { font-size: 22px; font-weight: 700; color: var(--text-primary); margin-top: 4px; }
 .chart-container { position: relative; max-height: 260px; margin-top: 16px; }
 .acciones-celda { display: flex; gap: 4px; align-items: center; }
