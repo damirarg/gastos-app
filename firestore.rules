@@ -29,7 +29,7 @@ service cloud.firestore {
     }
 
     function canEditVisibleGasto() {
-      return canReadGasto() &&
+      return resource.data.tipoReparto != 'privado' &&
         request.resource.data.diff(resource.data).changedKeys().hasOnly([
           'categoria',
           'tipoReparto',
