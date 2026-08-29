@@ -28,10 +28,23 @@ service cloud.firestore {
         request.resource.data.owner == userId();
     }
 
+    function canEditVisibleGasto() {
+      return canReadGasto() &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'categoria',
+          'tipoReparto',
+          'formato',
+          'medioId',
+          'periodo',
+          'concepto'
+        ]);
+    }
+
     match /gastos/{gastoId} {
       allow list: if allowedUser();
       allow get: if allowedUser() && canReadGasto();
-      allow create, update: if allowedUser() && canWriteGasto();
+      allow create: if allowedUser() && canWriteGasto();
+      allow update: if allowedUser() && (canWriteGasto() || canEditVisibleGasto());
       allow delete: if allowedUser() && canReadGasto();
     }
 
