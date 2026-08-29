@@ -1,0 +1,1121 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getFirestore, collection, addDoc, setDoc, deleteDoc, doc, getDoc, updateDoc, onSnapshot, query, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import {
+    obtenerNumeroLimpio,
+    calcularProporcionAlquiler,
+    inicializarInputsMonto,
+    calcularTotalesPrestamo,
+    calcularBalanceNeteado,
+    calcularLiquidezPersonal
+} from "./calculations.js";
+import { procesarExcelOCSV } from "./importer.js";
+import { escapeHTML, escapeAttr, normalizarTextoComparacion, fechaLocalKey, formatearFechaCSV, valorCSV, aplicarColorMonto } from "./render.js";
+import { USUARIOS, normalizarUsuarioId, usuarioEsDamian, usuarioNombre, usuarioCorto } from "./users.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyAppvZkCIXB4LLTBMIipFcRR6T_sJyQ1PA",
+    authDomain: "app-gastos-app.firebaseapp.com",
+    projectId: "app-gastos-app",
+    storageBucket: "app-gastos-app.firebasestorage.app",
+    messagingSenderId: "799819701178",
+    appId: "1:799819701178:web:bce68957bada57913c9b83"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+const pantallaLoginWrapper = document.getElementById('pantalla-login-wrapper');
+const seccionApp = document.getElementById('seccion-app');
+const formLogin = document.getElementById('form-login');
+const filtroMesInput = document.getElementById('filtro-mes');
+const periodoImputacionInput = document.getElementById('periodo-imputacion');
+
+const hoy = new Date();
+const mesActualStr = hoy.toISOString().slice(0, 7);
+filtroMesInput.value = mesActualStr;
+periodoImputacionInput.value = mesActualStr;
+document.getElementById('fecha-manual').value = hoy.toISOString().split('T')[0];
+document.getElementById('cuota-fecha').value = hoy.toISOString().split('T')[0];
+document.getElementById('traspaso-fecha').value = hoy.toISOString().split('T')[0];
+document.getElementById('pago-tarjeta-fecha').value = hoy.toISOString().split('T')[0];
+document.getElementById('prestamo-fecha-inicio').value = "2026-02-01";
+
+filtroMesInput.addEventListener('change', () => {
+    periodoImputacionInput.value = filtroMesInput.value;
+    escucharGastosEnTiempoReal();
+    cargarIngresosYsaldoDelMes();
+});
+
+function obtenerNombreUsuario(email) {
+    return normalizarUsuarioId(email);
+}
+
+function usuarioLabelSeguro(valor, corto = false) {
+    return escapeHTML(corto ? usuarioCorto(valor) : usuarioNombre(valor));
+}
+
+
+
+
+
+
+
+
+function esPosibleDuplicadoImportacion(borrador) {
+    const fechaBorrador = fechaLocalKey(borrador.fechaObj);
+    const conceptoBorrador = normalizarTextoComparacion(borrador.concepto);
+    if (!fechaBorrador || !borrador.monto) return false;
+
+    return listaGastosCompletaBase.some((gasto) => {
+        if (Math.round(Number(gasto.monto || 0)) !== Math.round(Number(borrador.monto || 0))) return false;
+        if (fechaLocalKey(gasto.fecha) !== fechaBorrador) return false;
+
+        const conceptoGuardado = normalizarTextoComparacion(gasto.concepto);
+        if (!conceptoGuardado || !conceptoBorrador) return true;
+        return conceptoGuardado === conceptoBorrador ||
+            conceptoGuardado.includes(conceptoBorrador) ||
+            conceptoBorrador.includes(conceptoGuardado);
+    });
+}
+
+let listaGastosGlobal = [];
+let listaGastosCompletaBase = []; // Para calcular saldos reales sin filtrar por periodo
+let listaTarjetasGlobal = [];
+let listaCuentasGlobal = [];
+let listaCuotasPrestamoGlobal = [];
+let listaTraspasosGlobal = [];
+let listaPagosTarjetasGlobal = [];
+let listaBorradoresImportacion = [];
+const suscripcionesTiempoReal = {
+    gastos: null,
+    tarjetas: null,
+    cuentas: null,
+    prestamoConfig: null,
+    cuotasPrestamo: null,
+    traspasos: null,
+    pagosTarjeta: null
+};
+let idGastoEnEdicionPeriodo = null;
+let esEdicionMasiva = false;
+let modoSeleccionActivoComun = false;
+let modoSeleccionActivoPrivado = false;
+
+function reemplazarSuscripcion(nombre, nuevaSuscripcion) {
+    if (suscripcionesTiempoReal[nombre]) suscripcionesTiempoReal[nombre]();
+    suscripcionesTiempoReal[nombre] = nuevaSuscripcion;
+}
+
+function limpiarSuscripcionesTiempoReal() {
+    Object.keys(suscripcionesTiempoReal).forEach((nombre) => {
+        if (suscripcionesTiempoReal[nombre]) {
+            suscripcionesTiempoReal[nombre]();
+            suscripcionesTiempoReal[nombre] = null;
+        }
+    });
+}
+
+async function ejecutarBatchEnBloques(items, aplicarOperacion, tamanoBloque = 450) {
+    for (let i = 0; i < items.length; i += tamanoBloque) {
+        const batch = writeBatch(db);
+        items.slice(i, i + tamanoBloque).forEach((item) => aplicarOperacion(batch, item));
+        await batch.commit();
+    }
+}
+
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        pantallaLoginWrapper.classList.add('oculto');
+        seccionApp.classList.remove('oculto');
+        const nombreUser = obtenerNombreUsuario(user.email);
+        document.getElementById('usuario-activo-email').textContent = usuarioCorto(nombreUser);
+        document.getElementById('nombre-privado-titular').textContent = usuarioNombre(nombreUser);
+
+        escucharTarjetasYcuentas();
+        escucharGastosEnTiempoReal();
+        cargarIngresosYsaldoDelMes();
+        escucharPrestamoYcuotas();
+        escucharTraspasosYPagosTarjetas();
+    } else {
+        limpiarSuscripcionesTiempoReal();
+        pantallaLoginWrapper.classList.remove('oculto');
+        seccionApp.classList.add('oculto');
+    }
+});
+
+formLogin.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+        await signInWithEmailAndPassword(auth, document.getElementById('login-email').value, document.getElementById('login-password').value);
+        formLogin.reset();
+    } catch (error) { alert("Error de autenticación."); }
+});
+
+document.getElementById('btn-logout').addEventListener('click', () => signOut(auth));
+
+document.getElementById('btn-exportar-mes').addEventListener('click', () => exportarMesActualCSV());
+
+window.cambiarVista = function(idVista, boton) {
+    document.querySelectorAll('.modulo-vista').forEach(v => v.classList.add('oculto'));
+    document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('activo'));
+    document.getElementById(idVista).classList.remove('oculto');
+    boton.classList.add('activo');
+};
+
+const categoriasBase = [
+    '🛒 Supermercado', '💊 Farmacia', '💡 Luz', '🔥 Gas', '🌐 Internet', '💧 Agua',
+    '🏠 Seguro Casa', '🧹 Servicio Doméstico', '🏊‍♂️ Servicio Pileta', '🧪 Insumos Pileta',
+    '🐈 Mascotas', '🛠️ Reparaciones Casa', '🍷 Salidas/Ocio', '⚕️ Obra Social',
+    '👕 Vestimenta', '✂️ Peluquería', '⛽ Combustible', '🚗 Seguro Auto',
+    '🔧 Service Auto', '📄 Patente', '🛍️ Varios'
+];
+
+const categoriasPorTipo = {
+    proporcional: ['🏠 Alquiler'],
+    comun: categoriasBase,
+    privado: ['🚬 Puchos', ...categoriasBase]
+};
+
+function inicializarSelectoresFiltro() {
+    const selectComun = document.getElementById('cat-comun');
+    const selectPrivado = document.getElementById('cat-privado');
+
+    let optsComun = '<option value="">Todas las categorías</option>';
+    categoriasPorTipo['comun'].forEach(c => optsComun += `<option value="${c}">${c}</option>`);
+    categoriasPorTipo['proporcional'].forEach(c => optsComun += `<option value="${c}">${c}</option>`);
+    if (selectComun) selectComun.innerHTML = optsComun;
+
+    let optsPrivado = '<option value="">Todas las categorías</option>';
+    categoriasPorTipo['privado'].forEach(c => optsPrivado += `<option value="${c}">${c}</option>`);
+    if (selectPrivado) selectPrivado.innerHTML = optsPrivado;
+}
+inicializarSelectoresFiltro();
+
+const selectTipoRepartoManual = document.getElementById('tipo-reparto');
+const selectCategoriaManual = document.getElementById('categoria');
+function actualizarCategoriasManuales() {
+    selectCategoriaManual.innerHTML = '';
+    (categoriasPorTipo[selectTipoRepartoManual.value] || []).forEach(cat => {
+        const op = document.createElement('option'); op.value = cat; op.textContent = cat; selectCategoriaManual.appendChild(op);
+    });
+}
+selectTipoRepartoManual.addEventListener('change', actualizarCategoriasManuales);
+actualizarCategoriasManuales();
+
+window.actualizarCategoriasFilaBorrador = function(index) {
+    const selectTipo = document.getElementById(`reparto-borrador-${index}`);
+    const selectCat = document.getElementById(`cat-borrador-${index}`);
+    selectCat.innerHTML = '';
+    (categoriasPorTipo[selectTipo.value] || []).forEach(cat => {
+        const op = document.createElement('option'); op.value = cat; op.textContent = cat; selectCat.appendChild(op);
+    });
+};
+
+window.actualizarCategoriaGasto = async function(idGasto, nuevaCategoria) {
+    try { await updateDoc(doc(db, "gastos", idGasto), { categoria: nuevaCategoria }); }
+    catch (error) { alert("Error al actualizar la categoría."); }
+};
+
+window.actualizarRepartoGasto = async function(idGasto, nuevoReparto) {
+    try {
+        const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
+        let nuevaCategoria = gastoObj ? gastoObj.categoria : "";
+
+        if (nuevoReparto === 'privado' && !categoriasPorTipo['privado'].includes(nuevaCategoria)) {
+            nuevaCategoria = '🛍️ Varios';
+        } else if (nuevoReparto === 'comun' && !categoriasPorTipo['comun'].includes(nuevaCategoria)) {
+            nuevaCategoria = '🛒 Supermercado';
+        } else if (nuevoReparto === 'proporcional') {
+            nuevaCategoria = '🏠 Alquiler';
+        }
+
+        await updateDoc(doc(db, "gastos", idGasto), { tipoReparto: nuevoReparto, categoria: nuevaCategoria });
+    } catch (error) { alert("Error al actualizar el tipo de reparto."); }
+};
+
+window.actualizarMedioGasto = async function(idGasto, valorSeleccionado) {
+    try {
+        let formato = 'efectivo';
+        let medioId = '';
+
+        if (valorSeleccionado.startsWith('tarjeta_')) {
+            formato = 'tarjeta';
+            medioId = valorSeleccionado.replace('tarjeta_', '');
+        } else if (valorSeleccionado.startsWith('cuenta_')) {
+            formato = 'transferencia';
+            medioId = valorSeleccionado.replace('cuenta_', '');
+        }
+
+        await updateDoc(doc(db, "gastos", idGasto), { formato: formato, medioId: medioId });
+    } catch (error) { alert("Error al actualizar el medio de pago."); }
+};
+
+window.editarPeriodoImputacion = function(idGasto) {
+    const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
+    if (!gastoObj) return;
+
+    esEdicionMasiva = false;
+    idGastoEnEdicionPeriodo = idGasto;
+    document.getElementById('modal-nuevo-periodo').value = gastoObj.periodo || filtroMesInput.value;
+    document.getElementById('modal-reimputar').classList.remove('oculto');
+};
+
+window.abrirModalReimputarMasivo = function(origen) {
+    const idBody = origen === 'comun' ? 'tabla-gastos-body' : 'tabla-gastos-privados-body';
+    const seleccionados = document.querySelectorAll(`#${idBody} .chk-item:checked`);
+
+    if (seleccionados.length === 0) {
+        alert("Por favor, tildá al menos un gasto para reimputar.");
+        return;
+    }
+
+    esEdicionMasiva = true;
+    document.getElementById('modal-nuevo-periodo').value = filtroMesInput.value;
+    document.getElementById('modal-reimputar').classList.remove('oculto');
+};
+
+window.cerrarModalReimputar = function() {
+    idGastoEnEdicionPeriodo = null;
+    esEdicionMasiva = false;
+    document.getElementById('modal-reimputar').classList.add('oculto');
+};
+
+window.confirmarReimputacionModal = async function() {
+    const nuevoPeriodo = document.getElementById('modal-nuevo-periodo').value;
+    if (!nuevoPeriodo) return;
+
+    if (esEdicionMasiva) {
+        const seleccionadosComun = document.querySelectorAll('#tabla-gastos-body .chk-item:checked');
+        const seleccionadosPriv = document.querySelectorAll('#tabla-gastos-privados-body .chk-item:checked');
+        const todos = [...seleccionadosComun, ...seleccionadosPriv];
+
+        try {
+            await ejecutarBatchEnBloques(todos, (batch, chk) => {
+                batch.update(doc(db, "gastos", chk.value), { periodo: nuevoPeriodo });
+            });
+            cerrarModalReimputar();
+        } catch (error) { alert("Error al procesar la reimputación masiva."); }
+    } else if (idGastoEnEdicionPeriodo) {
+        try {
+            await updateDoc(doc(db, "gastos", idGastoEnEdicionPeriodo), { periodo: nuevoPeriodo });
+            cerrarModalReimputar();
+        } catch (error) { alert("Error al actualizar el período."); }
+    }
+};
+
+window.ejecutarEliminacionMasiva = async function(origen) {
+    const idBody = origen === 'comun' ? 'tabla-gastos-body' : 'tabla-gastos-privados-body';
+    const seleccionados = document.querySelectorAll(`#${idBody} .chk-item:checked`);
+
+    if (seleccionados.length === 0) {
+        alert("Por favor, tildá al menos un gasto para eliminar.");
+        return;
+    }
+
+    if (confirm(`¿Estás seguro de que querés borrar permanentemente los ${seleccionados.length} gastos seleccionados?`)) {
+        try {
+            await ejecutarBatchEnBloques([...seleccionados], (batch, chk) => {
+                batch.delete(doc(db, "gastos", chk.value));
+            });
+        } catch (error) { alert("Error al eliminar los gastos seleccionados."); }
+    }
+};
+
+window.toggleModoSeleccion = function(origen) {
+    if (origen === 'comun') {
+        modoSeleccionActivoComun = !modoSeleccionActivoComun;
+        document.querySelectorAll('#tabla-gastos-comunes .col-chk').forEach(el => el.classList.toggle('oculto', !modoSeleccionActivoComun));
+        document.getElementById('barra-masiva-comun').classList.toggle('oculto', !modoSeleccionActivoComun);
+    } else {
+        modoSeleccionActivoPrivado = !modoSeleccionActivoPrivado;
+        document.querySelectorAll('#tabla-gastos-privados .col-chk').forEach(el => el.classList.toggle('oculto', !modoSeleccionActivoPrivado));
+        document.getElementById('barra-masiva-privado').classList.toggle('oculto', !modoSeleccionActivoPrivado);
+    }
+};
+
+window.toggleSeleccionarTodos = function(idBody, estaMarcado) {
+    document.querySelectorAll(`#${idBody} .chk-item`).forEach(chk => {
+        if (chk.parentElement.parentElement.style.display !== 'none') {
+            chk.checked = estaMarcado;
+        }
+    });
+};
+
+window.editarConcepto = async function(idGasto) {
+    const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
+    if (!gastoObj) return;
+    const nuevoConcepto = prompt("Modificá el concepto/detalle del gasto:", gastoObj.concepto);
+    if (nuevoConcepto !== null && nuevoConcepto.trim() !== "" && nuevoConcepto !== gastoObj.concepto) {
+        try { await updateDoc(doc(db, "gastos", idGasto), { concepto: nuevoConcepto.trim() }); }
+        catch (error) { alert("Error al actualizar el concepto."); }
+    }
+};
+
+window.filtrarTabla = function(idTabla, idSearch, idCat, idMedio) {
+    const textoBusqueda = document.getElementById(idSearch).value.toLowerCase();
+    const categoriaBuscada = document.getElementById(idCat).value;
+    const medioBuscado = document.getElementById(idMedio).value;
+    const filas = document.getElementById(idTabla).getElementsByTagName('tr');
+
+    for (let i = 0; i < filas.length; i++) {
+        const tr = filas[i];
+        if (tr.cells.length === 1) continue;
+
+        const concepto = tr.getAttribute('data-concepto') || "";
+        const categoria = tr.getAttribute('data-categoria') || "";
+        const medio = tr.getAttribute('data-medio') || "";
+
+        const coincideTexto = concepto.includes(textoBusqueda);
+        const coincideCat = categoriaBuscada === "" || categoria === categoriaBuscada;
+        const coincideMedio = medioBuscado === "" || medio === medioBuscado;
+
+        if (coincideTexto && coincideCat && coincideMedio) {
+            tr.style.display = "";
+        } else {
+            tr.style.display = "none";
+        }
+    }
+};
+
+const selectPagadoPor = document.getElementById('pagado-por');
+const selectFormatoPago = document.getElementById('formato-pago');
+const contTarjeta = document.getElementById('contenedor-tarjeta');
+const contCuenta = document.getElementById('contenedor-cuenta');
+const selectGastoTarjeta = document.getElementById('gasto-tarjeta-asociada');
+const selectGastoCuenta = document.getElementById('gasto-cuenta-asociada');
+
+function actualizarFiltrosMedioPago() {
+    const quienPaga = selectPagadoPor.value;
+    const formato = selectFormatoPago.value;
+    const titularBuscado = normalizarUsuarioId(quienPaga);
+
+    if (formato === 'efectivo') {
+        contTarjeta.style.display = 'none'; contCuenta.style.display = 'none';
+    } else if (formato === 'tarjeta') {
+        contTarjeta.style.display = 'flex'; contCuenta.style.display = 'none';
+        selectGastoTarjeta.innerHTML = '';
+        const tarjetasFiltradas = listaTarjetasGlobal.filter(t => normalizarUsuarioId(t.titular) === titularBuscado);
+        if(tarjetasFiltradas.length === 0) selectGastoTarjeta.innerHTML = '<option value="">Sin tarjetas cargadas</option>';
+        tarjetasFiltradas.forEach(t => {
+            const op = document.createElement('option'); op.value = t.id; op.textContent = `${t.marca} (**** ${t.ultimos4})`; selectGastoTarjeta.appendChild(op);
+        });
+    } else if (formato === 'transferencia') {
+        contTarjeta.style.display = 'none'; contCuenta.style.display = 'flex';
+        selectGastoCuenta.innerHTML = '';
+        const cuentasFiltradas = listaCuentasGlobal.filter(c => normalizarUsuarioId(c.titular) === titularBuscado);
+        if(cuentasFiltradas.length === 0) selectGastoCuenta.innerHTML = '<option value="">Sin cuentas cargadas</option>';
+        cuentasFiltradas.forEach(c => {
+            const op = document.createElement('option'); op.value = c.id; op.textContent = c.banco; selectGastoCuenta.appendChild(op);
+        });
+    }
+}
+
+selectPagadoPor.addEventListener('change', actualizarFiltrosMedioPago);
+selectFormatoPago.addEventListener('change', actualizarFiltrosMedioPago);
+
+document.getElementById('form-tarjeta').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+        await addDoc(collection(db, "tarjetas"), { titular: normalizarUsuarioId(document.getElementById('tarjeta-titular').value), tipo: document.getElementById('tarjeta-tipo').value, marca: document.getElementById('tarjeta-marca').value, ultimos4: document.getElementById('tarjeta-ultimos4').value });
+        document.getElementById('form-tarjeta').reset();
+    } catch (error) { alert("Error al guardar la tarjeta."); }
+});
+
+document.getElementById('form-cuenta').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+        await addDoc(collection(db, "cuentas"), { titular: normalizarUsuarioId(document.getElementById('cuenta-titular').value), banco: document.getElementById('cuenta-banco').value, alias: document.getElementById('cuenta-alias').value });
+        document.getElementById('form-cuenta').reset();
+    } catch (error) { alert("Error al guardar la cuenta."); }
+});
+
+function renderizarDropdownsMedios() {
+    const selectImp = document.getElementById('archivo-medio-select');
+    selectImp.innerHTML = `<option value="efectivo">💵 Efectivo / Ninguna</option>`;
+
+    let optFiltros = '<option value="">Todos los medios de pago</option><option value="efectivo">💵 Efectivo</option>';
+
+    listaTarjetasGlobal.forEach(t => {
+        const desc = t.tipo === 'extension' ? '(Extensión)' : '(Propia)';
+        selectImp.innerHTML += `<option value="tarjeta_${escapeAttr(t.id)}">💳 ${escapeHTML(t.marca)} - ${usuarioLabelSeguro(t.titular, true)} ${desc}</option>`;
+        optFiltros += `<option value="${escapeAttr(t.id)}">💳 ${escapeHTML(t.marca)} (${usuarioLabelSeguro(t.titular, true)} - ${desc})</option>`;
+    });
+
+    listaCuentasGlobal.forEach(c => {
+        selectImp.innerHTML += `<option value="cuenta_${escapeAttr(c.id)}">🏦 ${escapeHTML(c.banco)} - ${usuarioLabelSeguro(c.titular, true)}</option>`;
+        optFiltros += `<option value="${escapeAttr(c.id)}">🏦 ${escapeHTML(c.banco)} (${usuarioLabelSeguro(c.titular, true)})</option>`;
+    });
+
+    document.getElementById('medio-comun').innerHTML = optFiltros;
+    document.getElementById('medio-privado').innerHTML = optFiltros;
+
+    actualizarFiltrosMedioPago();
+}
+
+function describirMedioPago(gasto) {
+    if (gasto.formato === 'tarjeta' && gasto.medioId) {
+        const tarjeta = listaTarjetasGlobal.find(t => t.id === gasto.medioId);
+        if (tarjeta) return `${tarjeta.marca} ${usuarioCorto(tarjeta.titular)} ${tarjeta.tipo === 'extension' ? 'Extension' : 'Propia'}`;
+    }
+    if (gasto.formato === 'transferencia' && gasto.medioId) {
+        const cuenta = listaCuentasGlobal.find(c => c.id === gasto.medioId);
+        if (cuenta) return `${cuenta.banco} ${usuarioCorto(cuenta.titular)}`;
+    }
+    return gasto.formato || 'efectivo';
+}
+
+function exportarMesActualCSV() {
+    if (listaGastosGlobal.length === 0) {
+        alert("No hay gastos para exportar en el período seleccionado.");
+        return;
+    }
+
+    const encabezado = ['Fecha', 'Periodo', 'Concepto', 'Categoria', 'Pagado por', 'Tipo reparto', 'Formato', 'Medio', 'Monto'];
+    const filas = listaGastosGlobal.map((gasto) => [
+        formatearFechaCSV(gasto.fecha),
+        gasto.periodo || filtroMesInput.value,
+        gasto.concepto || '',
+        gasto.categoria || '',
+            usuarioNombre(gasto.pagadoPor),
+        gasto.tipoReparto || '',
+        gasto.formato || '',
+        describirMedioPago(gasto),
+        gasto.monto || 0
+    ]);
+
+    const contenido = [encabezado, ...filas]
+        .map((fila) => fila.map(valorCSV).join(','))
+        .join('\n');
+    const blob = new Blob([`\ufeff${contenido}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `gastos-${filtroMesInput.value}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function escucharTarjetasYcuentas() {
+    reemplazarSuscripcion('tarjetas', onSnapshot(collection(db, "tarjetas"), (snapshot) => {
+        listaTarjetasGlobal = [];
+        const contListaT = document.getElementById('lista-tarjetas'); contListaT.innerHTML = "";
+        snapshot.forEach((docSnap) => {
+            const t = docSnap.data(); t.id = docSnap.id; listaTarjetasGlobal.push(t);
+            const desc = t.tipo === 'extension' ? '(Extensión)' : '(Propia)';
+            contListaT.innerHTML += `<div class="tarjeta-item"><span>💳 <strong>${escapeHTML(t.marca)}</strong> - ${usuarioLabelSeguro(t.titular, true)} <small>${desc}</small> (**** ${escapeHTML(t.ultimos4)})</span><button class="btn-eliminar" onclick="eliminarMedio('tarjetas', '${escapeAttr(t.id)}')">🗑️</button></div>`;
+        });
+        renderizarDropdownsMedios();
+    }));
+
+    reemplazarSuscripcion('cuentas', onSnapshot(collection(db, "cuentas"), (snapshot) => {
+        listaCuentasGlobal = [];
+        const contListaC = document.getElementById('lista-cuentas'); contListaC.innerHTML = "";
+        snapshot.forEach((docSnap) => {
+            const c = docSnap.data(); c.id = docSnap.id; listaCuentasGlobal.push(c);
+            contListaC.innerHTML += `<div class="tarjeta-item"><span>🏦 <strong>${escapeHTML(c.banco)}</strong> - ${usuarioLabelSeguro(c.titular, true)}</span><button class="btn-eliminar" onclick="eliminarMedio('cuentas', '${escapeAttr(c.id)}')">🗑️</button></div>`;
+        });
+        renderizarDropdownsMedios();
+    }));
+}
+
+window.eliminarMedio = async function(coleccion, id) {
+    if (confirm("¿Borrar este medio de pago?")) { await deleteDoc(doc(db, coleccion, id)); }
+};
+
+// INGRESOS Y SALDOS BASE DE LAS TRES CUENTAS EN FIREBASE
+async function cargarIngresosYsaldoDelMes() {
+    const mes = filtroMesInput.value;
+    const docRef = doc(db, "ingresos", mes);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+        const data = docSnap.data();
+        document.getElementById('sueldo-damian').value = new Intl.NumberFormat('es-AR').format(data.sueldoDamian || 0);
+        document.getElementById('sueldo-maxi').value = new Intl.NumberFormat('es-AR').format(data.sueldoMaxi || 0);
+
+        const esDamian = usuarioEsDamian(auth.currentUser.email);
+        const sEfectivo = esDamian ? (data.baseEfectivoDamian || 0) : 0;
+        const sGalicia = esDamian ? (data.baseGaliciaDamian || 0) : 0;
+        const sMP = esDamian ? (data.baseMPDamian || 0) : 0;
+
+        document.getElementById('saldo-base-efectivo').value = sEfectivo !== undefined ? (sEfectivo < 0 ? '-' : '') + new Intl.NumberFormat('es-AR').format(Math.abs(sEfectivo)) : '';
+        document.getElementById('saldo-base-galicia').value = sGalicia !== undefined ? (sGalicia < 0 ? '-' : '') + new Intl.NumberFormat('es-AR').format(Math.abs(sGalicia)) : '';
+        document.getElementById('saldo-base-mp').value = sMP !== undefined ? (sMP < 0 ? '-' : '') + new Intl.NumberFormat('es-AR').format(Math.abs(sMP)) : '';
+    } else {
+        document.getElementById('sueldo-damian').value = '';
+        document.getElementById('sueldo-maxi').value = '';
+        document.getElementById('saldo-base-efectivo').value = '';
+        document.getElementById('saldo-base-galicia').value = '';
+        document.getElementById('saldo-base-mp').value = '';
+    }
+    calcularProporcionAlquiler();
+    if(window.recalcularBalanceNeteado) window.recalcularBalanceNeteado();
+    if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+}
+
+document.getElementById('btn-guardar-ingresos').addEventListener('click', async () => {
+    const mes = filtroMesInput.value;
+    const sD = obtenerNumeroLimpio('sueldo-damian');
+    const sM = obtenerNumeroLimpio('sueldo-maxi');
+    try {
+        const btn = document.getElementById('btn-guardar-ingresos');
+        btn.textContent = "Guardando..."; btn.disabled = true;
+        await setDoc(doc(db, "ingresos", mes), { sueldoDamian: sD, sueldoMaxi: sM }, { merge: true });
+        btn.textContent = "✓ Guardado";
+        setTimeout(() => { btn.textContent = "💾 Guardar Ingresos"; btn.disabled = false; }, 2000);
+    } catch (error) { alert("Error al guardar ingresos."); }
+});
+
+document.getElementById('btn-guardar-saldos-base').addEventListener('click', async () => {
+    const mes = filtroMesInput.value;
+    const bEfectivo = obtenerNumeroLimpio('saldo-base-efectivo');
+    const bGalicia = obtenerNumeroLimpio('saldo-base-galicia');
+    const bMP = obtenerNumeroLimpio('saldo-base-mp');
+
+    const btn = document.getElementById('btn-guardar-saldos-base');
+    btn.textContent = "Guardando saldos..."; btn.disabled = true;
+
+    try {
+        await setDoc(doc(db, "ingresos", mes), {
+            baseEfectivoDamian: bEfectivo,
+            baseGaliciaDamian: bGalicia,
+            baseMPDamian: bMP
+        }, { merge: true });
+        btn.textContent = "✓ Saldos Base Guardados";
+        setTimeout(() => { btn.textContent = "💾 Guardar Saldos Base Cuentas"; btn.disabled = false; }, 2000);
+    } catch (error) { alert("Error al guardar saldos base."); btn.textContent = "💾 Guardar Saldos Base Cuentas"; btn.disabled = false; }
+});
+
+function escucharTraspasosYPagosTarjetas() {
+    const qTraspasos = query(collection(db, "traspasos_cuentas"), orderBy("fecha", "desc"));
+    reemplazarSuscripcion('traspasos', onSnapshot(qTraspasos, (snapshot) => {
+        listaTraspasosGlobal = [];
+        snapshot.forEach((docSnap) => {
+            const t = docSnap.data(); t.id = docSnap.id;
+            listaTraspasosGlobal.push(t);
+        });
+        if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+    }));
+
+    const qPagos = query(collection(db, "pagos_tarjeta"), orderBy("fecha", "desc"));
+    reemplazarSuscripcion('pagosTarjeta', onSnapshot(qPagos, (snapshot) => {
+        listaPagosTarjetasGlobal = [];
+        snapshot.forEach((docSnap) => {
+            const p = docSnap.data(); p.id = docSnap.id;
+            listaPagosTarjetasGlobal.push(p);
+        });
+        if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+    }));
+}
+
+document.getElementById('form-traspaso-cuentas').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fecha = new Date(document.getElementById('traspaso-fecha').value + "T12:00:00");
+    const origen = document.getElementById('traspaso-origen').value;
+    const destino = document.getElementById('traspaso-destino').value;
+    const monto = obtenerNumeroLimpio('traspaso-monto');
+
+    if (origen === destino) {
+        alert("La cuenta de origen y destino deben ser diferentes.");
+        return;
+    }
+    if (!monto || monto <= 0) return;
+
+    try {
+        await addDoc(collection(db, "traspasos_cuentas"), {
+            fecha: fecha, origen: origen, destino: destino, monto: monto,
+            periodo: filtroMesInput.value, usuarioCreador: auth.currentUser.email
+        });
+        document.getElementById('form-traspaso-cuentas').reset();
+        document.getElementById('traspaso-fecha').value = new Date().toISOString().split('T')[0];
+        alert("Traspaso entre cuentas registrado correctamente.");
+    } catch (error) { alert("Error al registrar el traspaso."); }
+});
+
+document.getElementById('form-pago-tarjeta').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fecha = new Date(document.getElementById('pago-tarjeta-fecha').value + "T12:00:00");
+    const tarjetaTipo = document.getElementById('pago-tarjeta-tipo').value;
+    const cuentaLiquidadora = document.getElementById('pago-tarjeta-cuenta').value;
+    const monto = obtenerNumeroLimpio('pago-tarjeta-monto');
+
+    if (!monto || monto <= 0) return;
+
+    try {
+        await addDoc(collection(db, "pagos_tarjeta"), {
+            fecha: fecha, tarjetaTipo: tarjetaTipo, cuentaLiquidadora: cuentaLiquidadora, monto: monto,
+            periodo: filtroMesInput.value, usuarioCreador: auth.currentUser.email
+        });
+        document.getElementById('form-pago-tarjeta').reset();
+        document.getElementById('pago-tarjeta-fecha').value = new Date().toISOString().split('T')[0];
+        document.getElementById('contenedor-pago-tarjeta').classList.add('oculto');
+        alert("Pago de tarjeta registrado correctamente.");
+    } catch (error) { alert("Error al registrar el pago de tarjeta."); }
+});
+
+// LÓGICA DE PRÉSTAMOS
+function escucharPrestamoYcuotas() {
+    reemplazarSuscripcion('prestamoConfig', onSnapshot(doc(db, "configuracion", "prestamo_auto_maxi"), (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            document.getElementById('prestamo-monto-original').value = new Intl.NumberFormat('es-AR').format(data.montoOriginal || 0);
+            document.getElementById('prestamo-fecha-inicio').value = data.fechaInicio || "2026-02-01";
+            document.getElementById('prestamo-motivo').value = data.motivo || "Préstamo Compra Auto Maxi";
+        }
+        recalcularTotalesPrestamo();
+    }));
+
+    const q = query(collection(db, "cuotas_prestamo"), orderBy("fecha", "desc"));
+    reemplazarSuscripcion('cuotasPrestamo', onSnapshot(q, (snapshot) => {
+        listaCuotasPrestamoGlobal = [];
+        const tbody = document.getElementById('tabla-prestamo-cuotas-body');
+        tbody.innerHTML = "";
+
+        snapshot.forEach((docSnap) => {
+            const cuota = docSnap.data(); cuota.id = docSnap.id;
+            listaCuotasPrestamoGlobal.push(cuota);
+
+            const fechaObj = cuota.fecha ? cuota.fecha.toDate() : new Date();
+            const fechaFmt = fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+            let cuentaFmt = "💵 Efectivo";
+            if (cuota.cuentaDestino === 'mp') cuentaFmt = "📱 Mercado Pago";
+            else if (cuota.cuentaDestino === 'galicia') cuentaFmt = "🏦 Banco Galicia";
+
+            tbody.innerHTML += `
+                <tr>
+                    <td>${fechaFmt}</td>
+                    <td>${escapeHTML(cuota.motivo || "Pago cuota auto")}</td>
+                    <td><span class="badge-pagado">${cuentaFmt}</span></td>
+                    <td><strong>$${new Intl.NumberFormat('es-AR').format(cuota.monto)}</strong></td>
+                    <td><button class="btn-eliminar" onclick="eliminarCuotaPrestamo('${cuota.id}')">🗑️</button></td>
+                </tr>`;
+        });
+
+        if (listaCuotasPrestamoGlobal.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No hay pagos registrados.</td></tr>`;
+        }
+
+        recalcularTotalesPrestamo();
+        if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+    }));
+}
+
+document.getElementById('form-config-prestamo').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const montoOriginal = obtenerNumeroLimpio('prestamo-monto-original');
+    const fechaInicio = document.getElementById('prestamo-fecha-inicio').value;
+    const motivo = document.getElementById('prestamo-motivo').value;
+
+    try {
+        await setDoc(doc(db, "configuracion", "prestamo_auto_maxi"), {
+            montoOriginal: montoOriginal, fechaInicio: fechaInicio, motivo: motivo
+        }, { merge: true });
+        alert("Préstamo configurado correctamente.");
+    } catch (error) { alert("Error al guardar la configuración del préstamo."); }
+});
+
+document.getElementById('form-pago-prestamo').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const montoCuota = obtenerNumeroLimpio('cuota-monto');
+    const fechaCuota = new Date(document.getElementById('cuota-fecha').value + "T12:00:00");
+    const cuentaDestino = document.getElementById('cuota-cuenta-destino').value;
+
+    if (!montoCuota || montoCuota <= 0) return;
+
+    try {
+        await addDoc(collection(db, "cuotas_prestamo"), {
+            monto: montoCuota, fecha: fechaCuota, cuentaDestino: cuentaDestino,
+            motivo: "Cuota préstamo auto Maxi", usuarioCreador: auth.currentUser.email,
+            periodo: filtroMesInput.value
+        });
+        document.getElementById('form-pago-prestamo').reset();
+        document.getElementById('cuota-fecha').value = new Date().toISOString().split('T')[0];
+    } catch (error) { alert("Error al registrar el cobro de la cuota."); }
+});
+
+window.eliminarCuotaPrestamo = async function(id) {
+    if (confirm("¿Borrar este pago del préstamo?")) { await deleteDoc(doc(db, "cuotas_prestamo", id)); }
+};
+
+function recalcularTotalesPrestamo() {
+    const montoOriginal = obtenerNumeroLimpio('prestamo-monto-original');
+    const totales = calcularTotalesPrestamo(montoOriginal, listaCuotasPrestamoGlobal);
+
+    document.getElementById('metric-prestamo-original').textContent = "$" + new Intl.NumberFormat('es-AR').format(totales.montoOriginal);
+    document.getElementById('metric-prestamo-cobrado').textContent = "$" + new Intl.NumberFormat('es-AR').format(totales.totalCobrado);
+    document.getElementById('metric-prestamo-pendiente').textContent = "$" + new Intl.NumberFormat('es-AR').format(totales.pendiente);
+}
+
+window.estadoDeudaActual = null;
+document.getElementById('btn-abrir-saldar').addEventListener('click', () => {
+    const cont = document.getElementById('contenedor-saldar-deuda');
+    cont.classList.remove('oculto');
+    const hoyStr = new Date().toISOString().split('T')[0];
+    document.getElementById('saldar-fecha').value = hoyStr;
+    if (window.estadoDeudaActual) {
+        document.getElementById('saldar-monto').value = new Intl.NumberFormat('es-AR').format(window.estadoDeudaActual.monto);
+    }
+});
+
+document.getElementById('form-saldar-deuda').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!window.estadoDeudaActual) return;
+    const montoLimpio = obtenerNumeroLimpio('saldar-monto');
+    const medio = document.getElementById('saldar-medio').value;
+    const fechaIngresada = new Date(document.getElementById('saldar-fecha').value + "T12:00:00");
+    const periodoActual = filtroMesInput.value;
+
+    if (!montoLimpio || montoLimpio <= 0) return;
+
+    try {
+        await addDoc(collection(db, "gastos"), {
+            concepto: "Liquidación de saldos del mes", monto: montoLimpio, categoria: "Liquidación",
+            pagadoPor: normalizarUsuarioId(window.estadoDeudaActual.deudor), tipoReparto: "devolucion", formato: medio,
+            medioId: "", usuarioCreador: auth.currentUser.email, fecha: fechaIngresada, periodo: periodoActual
+        });
+        document.getElementById('form-saldar-deuda').reset();
+        document.getElementById('contenedor-saldar-deuda').classList.add('oculto');
+    } catch (error) { alert("Error al registrar el pago de la deuda."); }
+});
+
+function escucharGastosEnTiempoReal() {
+    const q = query(collection(db, "gastos"), orderBy("fecha", "desc"));
+    reemplazarSuscripcion('gastos', onSnapshot(q, (snapshot) => {
+        listaGastosGlobal = [];
+        listaGastosCompletaBase = []; // Almacena todos los documentos sin filtrar por mes para el cálculo de saldos físicos
+        const tablaComunBody = document.getElementById('tabla-gastos-body');
+        const tablaPrivadaBody = document.getElementById('tabla-gastos-privados-body');
+        tablaComunBody.innerHTML = ""; tablaPrivadaBody.innerHTML = "";
+
+        const mesSeleccionado = filtroMesInput.value;
+        const usuarioLogueadoActual = obtenerNombreUsuario(auth.currentUser.email);
+
+        let contadorComunes = 0; let contadorPrivados = 0;
+
+        snapshot.forEach((docSnap) => {
+            const gasto = docSnap.data(); gasto.id = docSnap.id;
+            listaGastosCompletaBase.push(gasto); // Se guarda para el cálculo de caja independiente del período
+
+            const fechaObj = gasto.fecha ? gasto.fecha.toDate() : new Date();
+            const periodoGasto = gasto.periodo ? gasto.periodo : fechaObj.toISOString().slice(0, 7);
+
+            if (periodoGasto === mesSeleccionado) {
+                listaGastosGlobal.push(gasto);
+                const fechaFormateada = fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+                const montoFormateado = new Intl.NumberFormat('es-AR').format(gasto.monto);
+                const conceptoSeguro = escapeHTML(gasto.concepto || 'Sin concepto');
+                const conceptoAttr = escapeAttr((gasto.concepto || '').toLowerCase());
+                const categoriaSegura = escapeHTML(gasto.categoria || 'Sin categoria');
+                const categoriaAttr = escapeAttr(gasto.categoria || '');
+                const pagadoPorSeguro = usuarioLabelSeguro(gasto.pagadoPor, false);
+
+                let medioFiltroVal = gasto.medioId ? gasto.medioId : gasto.formato;
+                const medioAttr = escapeAttr(medioFiltroVal);
+                let valorSeleccionadoActual = gasto.medioId ? `${gasto.formato === 'tarjeta' ? 'tarjeta_' : 'cuenta_'}${gasto.medioId}` : 'efectivo';
+
+                let selectMedioTablaHTML = `<select class="mini-select" onchange="actualizarMedioGasto('${gasto.id}', this.value)">`;
+                selectMedioTablaHTML += `<option value="efectivo" ${valorSeleccionadoActual === 'efectivo' ? 'selected' : ''}>💵 Efectivo</option>`;
+
+                listaTarjetasGlobal.forEach(t => {
+                    const val = `tarjeta_${t.id}`;
+                    const isSelected = (val === valorSeleccionadoActual) ? 'selected' : '';
+                    const desc = t.tipo === 'extension' ? 'Ext' : 'Propia';
+                    selectMedioTablaHTML += `<option value="${escapeAttr(val)}" ${isSelected}>💳 ${escapeHTML(t.marca)} (${desc})</option>`;
+                });
+
+                listaCuentasGlobal.forEach(c => {
+                    const val = `cuenta_${c.id}`;
+                    const isSelected = (val === valorSeleccionadoActual) ? 'selected' : '';
+                    selectMedioTablaHTML += `<option value="${escapeAttr(val)}" ${isSelected}>🏦 ${escapeHTML(c.banco)}</option>`;
+                });
+                selectMedioTablaHTML += `</select>`;
+
+                const accionesHTML = `
+                    <div class="acciones-celda">
+                        <button class="btn-editar-icono" title="Reimputar período" onclick="editarPeriodoImputacion('${gasto.id}')">📅</button>
+                        <button class="btn-editar-icono" title="Editar concepto" onclick="editarConcepto('${gasto.id}')">✏️</button>
+                        <button class="btn-eliminar" title="Eliminar gasto" onclick="eliminarGasto('${gasto.id}')">🗑️</button>
+                    </div>
+                `;
+
+                const colChkComun = `<td class="col-chk ${modoSeleccionActivoComun ? '' : 'oculto'}"><input type="checkbox" class="chk-tabla chk-item" value="${gasto.id}"></td>`;
+                const colChkPriv = `<td class="col-chk ${modoSeleccionActivoPrivado ? '' : 'oculto'}"><input type="checkbox" class="chk-tabla chk-item" value="${gasto.id}"></td>`;
+
+                if (gasto.tipoReparto === 'comun' || gasto.tipoReparto === 'proporcional' || gasto.tipoReparto === 'devolucion') {
+                    contadorComunes++;
+                    let selectRepartoHTML = `<select class="mini-select" onchange="actualizarRepartoGasto('${gasto.id}', this.value)">
+                        <option value="comun" ${gasto.tipoReparto === 'comun' ? 'selected' : ''}>🤝 Común</option>
+                        <option value="privado" ${gasto.tipoReparto === 'privado' ? 'selected' : ''}>👤 Personal</option>
+                        <option value="proporcional" ${gasto.tipoReparto === 'proporcional' ? 'selected' : ''}>🏠 Alquiler %</option>
+                    </select>`;
+                    if (gasto.tipoReparto === 'devolucion') { selectRepartoHTML = `<span class="badge-pagado">🤝 Liquidación</span>`; }
+
+                    tablaComunBody.innerHTML += `
+                        <tr data-concepto="${conceptoAttr}" data-categoria="${categoriaAttr}" data-medio="${medioAttr}">
+                            ${colChkComun}
+                            <td>${fechaFormateada}</td>
+                            <td><strong>${conceptoSeguro}</strong> <br><small style="color:var(--text-secondary);">${categoriaSegura}</small></td>
+                            <td><span class="badge-pagado">${pagadoPorSeguro}</span></td>
+                            <td>${selectMedioTablaHTML}</td>
+                            <td>${selectRepartoHTML}</td>
+                            <td><strong>$${montoFormateado}</strong></td>
+                            <td>${accionesHTML}</td>
+                        </tr>`;
+                }
+
+            if (gasto.tipoReparto === 'privado' && normalizarUsuarioId(gasto.pagadoPor) === usuarioLogueadoActual) {
+                    contadorPrivados++;
+                    let selectRepartoPrivadoHTML = `<select class="mini-select" onchange="actualizarRepartoGasto('${gasto.id}', this.value)">
+                        <option value="comun">🤝 Común</option>
+                        <option value="privado" selected>👤 Personal</option>
+                        <option value="proporcional">🏠 Alquiler %</option>
+                    </select>`;
+
+                    let selectCatHTML = `<select class="mini-select" onchange="actualizarCategoriaGasto('${gasto.id}', this.value)">`;
+                    categoriasPorTipo['privado'].forEach(cat => {
+                        let isSelected = (cat === gasto.categoria) ? 'selected' : '';
+                        selectCatHTML += `<option value="${cat}" ${isSelected}>${cat}</option>`;
+                    });
+                    selectCatHTML += `</select>`;
+
+                    tablaPrivadaBody.innerHTML += `
+                        <tr data-concepto="${conceptoAttr}" data-categoria="${categoriaAttr}" data-medio="${medioAttr}">
+                            ${colChkPriv}
+                            <td>${fechaFormateada}</td>
+                            <td><strong>${conceptoSeguro}</strong></td>
+                            <td>${selectRepartoPrivadoHTML}</td>
+                            <td>${selectCatHTML}</td>
+                            <td>${selectMedioTablaHTML}</td>
+                            <td><strong>$${montoFormateado}</strong></td>
+                            <td>${accionesHTML}</td>
+                        </tr>`;
+                }
+            }
+        });
+
+        if (contadorComunes === 0) tablaComunBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No hay gastos comunes o liquidaciones registradas.</td></tr>`;
+        if (contadorPrivados === 0) tablaPrivadaBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No tenés gastos personales registrados.</td></tr>`;
+
+        filtrarTabla('tabla-gastos-body', 'search-comun', 'cat-comun', 'medio-comun');
+        filtrarTabla('tabla-gastos-privados-body', 'search-privado', 'cat-privado', 'medio-privado');
+
+        recalcularBalanceNeteado();
+        calcularDineroPersonalPrivado();
+        actualizarGraficosDashboard();
+    }));
+}
+
+window.eliminarGasto = async function(id) { if (confirm("¿Borrar este gasto o pago?")) await deleteDoc(doc(db, "gastos", id)); };
+
+document.getElementById('form-gasto').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const concepto = document.getElementById('concepto').value;
+    const montoLimpio = obtenerNumeroLimpio('monto');
+    const formato = document.getElementById('formato-pago').value;
+    const fechaManual = document.getElementById('fecha-manual').value;
+    const periodoImputacion = document.getElementById('periodo-imputacion').value;
+    const fechaGasto = new Date(fechaManual + "T12:00:00");
+
+    let medioId = "";
+    if (formato === 'tarjeta') medioId = document.getElementById('gasto-tarjeta-asociada').value;
+    else if (formato === 'transferencia') medioId = document.getElementById('gasto-cuenta-asociada').value;
+
+    if (!montoLimpio) return;
+
+    try {
+        await addDoc(collection(db, "gastos"), {
+        concepto: concepto, monto: montoLimpio, categoria: document.getElementById('categoria').value,
+        pagadoPor: normalizarUsuarioId(document.getElementById('pagado-por').value), tipoReparto: document.getElementById('tipo-reparto').value,
+            formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email,
+            fecha: fechaGasto, periodo: periodoImputacion
+        });
+        document.getElementById('form-gasto').reset();
+        document.getElementById('fecha-manual').value = new Date().toISOString().split('T')[0];
+        document.getElementById('periodo-imputacion').value = filtroMesInput.value;
+        actualizarCategoriasManuales(); actualizarFiltrosMedioPago();
+    } catch (e) { alert("Error al confirmar el gasto."); }
+});
+
+document.getElementById('btn-procesar-archivo').addEventListener('click', async () => {
+    const medioImportacion = document.getElementById('archivo-medio-select').value;
+    const file = document.getElementById('archivo-input').files[0];
+    if (!file) return;
+
+    const btn = document.getElementById('btn-procesar-archivo'); btn.disabled = true;
+    try {
+        const consumos = await procesarExcelOCSV(file);
+        const tbody = document.getElementById('tabla-previa-ia-body'); tbody.innerHTML = "";
+        document.getElementById('contenedor-previa-ia').classList.remove('oculto');
+
+        let pDefecto = USUARIOS.DAMIAN;
+        if (medioImportacion.startsWith('tarjeta_')) {
+            const id = medioImportacion.replace('tarjeta_', '');
+            const tObj = listaTarjetasGlobal.find(t => t.id === id);
+            if (tObj) pDefecto = normalizarUsuarioId(tObj.titular) || USUARIOS.DAMIAN;
+        } else if (medioImportacion.startsWith('cuenta_')) {
+            const id = medioImportacion.replace('cuenta_', '');
+            const cObj = listaCuentasGlobal.find(c => c.id === id);
+            if (cObj) pDefecto = normalizarUsuarioId(cObj.titular) || USUARIOS.DAMIAN;
+        }
+
+        listaBorradoresImportacion = consumos;
+
+        let optCats = ''; categoriasPorTipo['comun'].forEach(cat => { optCats += `<option value="${escapeAttr(cat)}">${escapeHTML(cat)}</option>`; });
+        let optMedios = `<option value="efectivo">💵 Efectivo / Otra</option>`;
+        listaTarjetasGlobal.forEach(t => {
+            const selected = medioImportacion === `tarjeta_${t.id}` ? 'selected' : '';
+            optMedios += `<option value="tarjeta_${escapeAttr(t.id)}" ${selected}>💳 ${escapeHTML(t.marca)} - ${usuarioLabelSeguro(t.titular, true)}</option>`;
+        });
+        listaCuentasGlobal.forEach(c => {
+            const selected = medioImportacion === `cuenta_${c.id}` ? 'selected' : '';
+            optMedios += `<option value="cuenta_${escapeAttr(c.id)}" ${selected}>🏦 ${escapeHTML(c.banco)} - ${usuarioLabelSeguro(c.titular, true)}</option>`;
+        });
+
+        consumos.forEach((c, i) => {
+            const tr = document.createElement('tr');
+            const posibleDuplicado = esPosibleDuplicadoImportacion(c);
+            if (posibleDuplicado) tr.classList.add('fila-duplicado');
+            const avisoDuplicado = posibleDuplicado ? '<br><span class="badge-alerta">Posible duplicado</span>' : '';
+            tr.innerHTML = `
+                <td>${escapeHTML(c.fecha)}</td><td><strong>${escapeHTML(c.concepto)}</strong>${avisoDuplicado}</td><td>$${new Intl.NumberFormat('es-AR').format(c.monto)}</td>
+                <td><select class="mini-select" id="reparto-borrador-${i}" onchange="actualizarCategoriasFilaBorrador(${i})"><option value="comun" selected>Común</option><option value="privado">Personal</option><option value="proporcional">Alquiler %</option></select></td>
+                <td><select class="mini-select" id="cat-borrador-${i}">${optCats}</select></td>
+                <td><select class="mini-select" id="pagador-borrador-${i}"><option value="damian" ${pDefecto === USUARIOS.DAMIAN ? 'selected' : ''}>Damián</option><option value="maxi" ${pDefecto === USUARIOS.MAXI ? 'selected' : ''}>Maxi</option></select></td>
+                <td><select class="mini-select" id="medio-borrador-${i}">${optMedios}</select></td>
+                <td><button class="btn-accion-rapida" onclick="confirmarGastoBorrador(${i}, this)">+ Agregar</button></td>`;
+            tbody.appendChild(tr);
+        });
+    } catch (error) { alert("Error al leer la planilla."); } finally { btn.disabled = false; }
+});
+
+
+
+window.confirmarGastoBorrador = async function(index, boton) {
+    try {
+        const borrador = listaBorradoresImportacion[index];
+        if (!borrador) {
+            alert("No se encontró el consumo del borrador.");
+            return;
+        }
+        if (esPosibleDuplicadoImportacion(borrador) && !confirm("Este consumo parece estar cargado previamente. ¿Querés agregarlo igual?")) {
+            return;
+        }
+        const medioSeleccionado = document.getElementById(`medio-borrador-${index}`).value;
+        let formato = 'efectivo'; let medioId = '';
+
+        if (medioSeleccionado.startsWith('tarjeta_')) { formato = 'tarjeta'; medioId = medioSeleccionado.replace('tarjeta_', ''); }
+        else if (medioSeleccionado.startsWith('cuenta_')) { formato = 'transferencia'; medioId = medioSeleccionado.replace('cuenta_', ''); }
+
+        await addDoc(collection(db, "gastos"), {
+            concepto: borrador.concepto, monto: borrador.monto, categoria: document.getElementById(`cat-borrador-${index}`).value,
+            pagadoPor: normalizarUsuarioId(document.getElementById(`pagador-borrador-${index}`).value), tipoReparto: document.getElementById(`reparto-borrador-${index}`).value,
+            formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: borrador.fechaObj || new Date(),
+            periodo: filtroMesInput.value
+        });
+        boton.parentElement.innerHTML = `<span style="color: var(--success-color); font-weight: bold;">✓ Agregado</span>`;
+    } catch (error) { alert("Error al confirmar."); }
+};
+
+window.recalcularBalanceNeteado = function() {
+    const sueldoDamian = obtenerNumeroLimpio('sueldo-damian'); const sueldoMaxi = obtenerNumeroLimpio('sueldo-maxi');
+    const balance = calcularBalanceNeteado({
+        gastos: listaGastosGlobal,
+        tarjetas: listaTarjetasGlobal,
+        sueldoDamian,
+        sueldoMaxi
+    });
+
+    document.getElementById('detalle-saldos').textContent = `Paga al banco/resumen compartido: Damián $${new Intl.NumberFormat('es-AR').format(balance.totalPagadoDamian)} | Maxi $${new Intl.NumberFormat('es-AR').format(balance.totalPagadoMaxi)}`;
+
+    const resTexto = document.getElementById('resultado-balance'); const estMetrica = document.getElementById('metric-estado');
+    const btnAbrirSaldar = document.getElementById('btn-abrir-saldar'); const contSaldar = document.getElementById('contenedor-saldar-deuda');
+
+    if (balance.estaAlDia) {
+        resTexto.textContent = "🎉 ¡Las cuentas están perfectamente al día!"; estMetrica.textContent = "Al día";
+        estMetrica.classList.remove('texto-positivo', 'texto-negativo', 'texto-alerta');
+        estMetrica.classList.add('texto-positivo');
+        btnAbrirSaldar.classList.add('oculto'); contSaldar.classList.add('oculto'); window.estadoDeudaActual = null;
+    } else if (balance.estadoDeuda.deudor === USUARIOS.MAXI) {
+        resTexto.textContent = `👉 Maxi le debe $${new Intl.NumberFormat('es-AR').format(balance.estadoDeuda.monto)} a Damián`; estMetrica.textContent = `Maxi debe $${new Intl.NumberFormat('es-AR').format(balance.estadoDeuda.monto)}`;
+        estMetrica.classList.remove('texto-positivo', 'texto-negativo', 'texto-alerta');
+        estMetrica.classList.add('texto-alerta');
+        btnAbrirSaldar.classList.remove('oculto'); window.estadoDeudaActual = { deudor: USUARIOS.MAXI, monto: balance.estadoDeuda.monto };
+    } else {
+        resTexto.textContent = `👉 Damián le debe $${new Intl.NumberFormat('es-AR').format(balance.estadoDeuda.monto)} a Maxi`; estMetrica.textContent = `Dami debe $${new Intl.NumberFormat('es-AR').format(balance.estadoDeuda.monto)}`;
+        estMetrica.classList.remove('texto-positivo', 'texto-negativo', 'texto-alerta');
+        estMetrica.classList.add('texto-alerta');
+        btnAbrirSaldar.classList.remove('oculto'); window.estadoDeudaActual = { deudor: USUARIOS.DAMIAN, monto: balance.estadoDeuda.monto };
+    }
+};
+
+let chartCatInstance = null; let chartAportesInstance = null; let chartPrivadoInstance = null;
+function actualizarGraficosDashboard() {
+    let totalComun = 0; const porCat = {}; let pagaDami = 0; let pagaMaxi = 0;
+    const porCatPrivado = {}; const usuarioLogueadoActual = obtenerNombreUsuario(auth.currentUser ? auth.currentUser.email : "");
+
+    listaGastosGlobal.forEach(g => {
+        if(g.tipoReparto === 'comun' || g.tipoReparto === 'proporcional'){
+            totalComun += g.monto; porCat[g.categoria || "Varios"] = (porCat[g.categoria || "Varios"] || 0) + g.monto;
+            if (normalizarUsuarioId(g.pagadoPor) === USUARIOS.DAMIAN) pagaDami += g.monto; if (normalizarUsuarioId(g.pagadoPor) === USUARIOS.MAXI) pagaMaxi += g.monto;
+        } else if (g.tipoReparto === 'privado' && normalizarUsuarioId(g.pagadoPor) === usuarioLogueadoActual) {
+            porCatPrivado[g.categoria || "Varios"] = (porCatPrivado[g.categoria || "Varios"] || 0) + g.monto;
+        }
+    });
+
+    document.getElementById('metric-total-mes').textContent = "$" + new Intl.NumberFormat('es-AR').format(totalComun);
+    document.getElementById('metric-promedio').textContent = "$" + new Intl.NumberFormat('es-AR').format(Math.round(totalComun / (Object.keys(porCat).length || 1)));
+
+    if (chartCatInstance) chartCatInstance.destroy();
+    chartCatInstance = new Chart(document.getElementById('chart-categorias').getContext('2d'), { type: 'doughnut', data: { labels: Object.keys(porCat), datasets: [{ data: Object.values(porCat), backgroundColor: ['#0071e3', '#34c759', '#ff9500', '#ff2d55', '#5856d6', '#af52de', '#5ac8fa', '#e57373', '#ffc107', '#4dd0e1'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } } });
+
+    if (chartAportesInstance) chartAportesInstance.destroy();
+    chartAportesInstance = new Chart(document.getElementById('chart-aportes').getContext('2d'), { type: 'bar', data: { labels: ['Damián', 'Maxi'], datasets: [{ label: 'Gasto Común ($)', data: [pagaDami, pagaMaxi], backgroundColor: ['#0071e3', '#34c759'], borderRadius: 8 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
+
+    if (chartPrivadoInstance) chartPrivadoInstance.destroy();
+    chartPrivadoInstance = new Chart(document.getElementById('chart-categorias-privado').getContext('2d'), { type: 'doughnut', data: { labels: Object.keys(porCatPrivado), datasets: [{ data: Object.values(porCatPrivado), backgroundColor: ['#0071e3', '#34c759', '#ff9500', '#ff2d55', '#5856d6', '#af52de', '#5ac8fa', '#e57373', '#ffc107', '#4dd0e1'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } });
+}
+
+// CÁLCULO FÍSICO DE CAJA BASADO EN LA FECHA REAL DE LA OPERACIÓN
+window.calcularDineroPersonalPrivado = function() {
+    if (!auth.currentUser) return;
+    const userActivo = obtenerNombreUsuario(auth.currentUser.email);
+    const periodoActual = filtroMesInput.value;
+    const liquidez = calcularLiquidezPersonal({
+        gastos: listaGastosCompletaBase,
+        tarjetas: listaTarjetasGlobal,
+        cuentas: listaCuentasGlobal,
+        cuotasPrestamo: listaCuotasPrestamoGlobal,
+        traspasos: listaTraspasosGlobal,
+        pagosTarjeta: listaPagosTarjetasGlobal,
+        periodoActual,
+        userActivo,
+        saldosBase: {
+            efectivo: obtenerNumeroLimpio('saldo-base-efectivo'),
+            galicia: obtenerNumeroLimpio('saldo-base-galicia'),
+            mp: obtenerNumeroLimpio('saldo-base-mp')
+        }
+    });
+
+    const elDispEfectivo = document.getElementById('disp-efectivo');
+    const elDispGalicia = document.getElementById('disp-galicia');
+    const elDispMP = document.getElementById('disp-mp');
+    const elDispTotal = document.getElementById('disp-total-liquidez');
+
+    elDispEfectivo.textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.disponibilidades.efectivo);
+    elDispGalicia.textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.disponibilidades.galicia);
+    elDispMP.textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.disponibilidades.mp);
+    elDispTotal.textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.disponibilidades.total);
+    aplicarColorMonto(elDispEfectivo, liquidez.disponibilidades.efectivo);
+    aplicarColorMonto(elDispGalicia, liquidez.disponibilidades.galicia);
+    aplicarColorMonto(elDispMP, liquidez.disponibilidades.mp);
+    aplicarColorMonto(elDispTotal, liquidez.disponibilidades.total);
+
+    document.getElementById('credito-propio').textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.tarjetas.propia);
+    document.getElementById('credito-extension').textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.tarjetas.extension);
+    document.getElementById('credito-total-tarjetas').textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.tarjetas.total);
+};
+
+inicializarInputsMonto();
