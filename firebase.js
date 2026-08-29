@@ -852,11 +852,23 @@ function renderizarAjustesCuenta() {
         return `
             <div class="item-compacto">
                 <span>${fecha} · ${escapeHTML(describirTipoAjuste(ajuste.tipo))} · ${escapeHTML(ajuste.cuenta || '')}</span>
-                <strong>${signo}$${new Intl.NumberFormat('es-AR').format(Math.abs(Number(ajuste.monto || 0)))}</strong>
+                <div class="item-compacto-acciones">
+                    <strong>${signo}$${new Intl.NumberFormat('es-AR').format(Math.abs(Number(ajuste.monto || 0)))}</strong>
+                    <button type="button" class="btn-eliminar" title="Borrar ajuste" onclick="eliminarAjusteCuenta('${escapeAttr(ajuste.id)}')">🗑️</button>
+                </div>
             </div>
         `;
     }).join('');
 }
+
+window.eliminarAjusteCuenta = async function(id) {
+    if (!confirm("¿Borrar este ajuste de cuenta?")) return;
+    try {
+        await deleteDoc(doc(db, "ajustes_cuenta", id));
+    } catch (error) {
+        alert("Error al borrar el ajuste.");
+    }
+};
 
 function describirTipoAjuste(tipo) {
     if (tipo === 'compra_usd') return 'Compra USD';

@@ -53,6 +53,9 @@ button:hover { background-color: var(--accent-hover); } .btn-secundario { backgr
 .zona-captura strong { color: var(--text-primary); font-size: 15px; }
 .zona-captura input { background: #fff; }
 .zona-captura:focus { border-color: var(--accent-color); box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12); }
+.lista-compacta { display: grid; gap: 8px; margin-top: 12px; }
+.item-compacto { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #fafafa; border: 1px solid var(--border-color); border-radius: 10px; padding: 9px 12px; font-size: 13px; }
+.item-compacto-acciones { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .btn-accion-rapida { padding: 6px 12px; font-size: 12px; border-radius: 8px; width: auto; }
 .btn-editar-icono { background: none; border: none; cursor: pointer; font-size: 15px; opacity: 0.6; transition: opacity 0.2s, transform 0.2s; padding: 2px 4px; width: auto; display: inline-block; color: inherit; }
 .btn-editar-icono:hover { opacity: 1; transform: scale(1.2); }
