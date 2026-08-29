@@ -1158,6 +1158,16 @@ function escucharGastosEnTiempoReal() {
 
                 if (gasto.tipoReparto === 'comun' || gasto.tipoReparto === 'proporcional' || gasto.tipoReparto === 'devolucion') {
                     contadorComunes++;
+                    let categoriaComunHTML = categoriaSegura;
+                    if (gasto.tipoReparto !== 'devolucion') {
+                        const categoriasDisponibles = gasto.tipoReparto === 'proporcional' ? categoriasPorTipo['proporcional'] : categoriasPorTipo['comun'];
+                        categoriaComunHTML = `<select class="mini-select" onchange="actualizarCategoriaGasto('${gasto.id}', this.value)">`;
+                        categoriasDisponibles.forEach(cat => {
+                            const isSelected = cat === gasto.categoria ? 'selected' : '';
+                            categoriaComunHTML += `<option value="${escapeAttr(cat)}" ${isSelected}>${escapeHTML(cat)}</option>`;
+                        });
+                        categoriaComunHTML += `</select>`;
+                    }
                     let selectRepartoHTML = `<select class="mini-select" onchange="actualizarRepartoGasto('${gasto.id}', this.value)">
                         <option value="comun" ${gasto.tipoReparto === 'comun' ? 'selected' : ''}>🤝 Común</option>
                         <option value="privado" ${gasto.tipoReparto === 'privado' ? 'selected' : ''}>👤 Personal</option>
@@ -1169,7 +1179,8 @@ function escucharGastosEnTiempoReal() {
                         <tr data-concepto="${conceptoAttr}" data-categoria="${categoriaAttr}" data-medio="${medioAttr}">
                             ${colChkComun}
                             <td>${fechaFormateada}</td>
-                            <td><strong>${conceptoSeguro}</strong> <br><small style="color:var(--text-secondary);">${categoriaSegura}</small></td>
+                            <td><strong>${conceptoSeguro}</strong></td>
+                            <td>${categoriaComunHTML}</td>
                             <td><span class="badge-pagado">${pagadoPorSeguro}</span></td>
                             <td>${selectMedioTablaHTML}</td>
                             <td>${selectRepartoHTML}</td>
