@@ -74,43 +74,69 @@ export function calcularBalanceNeteado({ gastos = [], tarjetas = [], sueldoDamia
     let balanceNetoDamian = 0;
     let totalPagadoDamian = 0;
     let totalPagadoMaxi = 0;
+    const detalleBalance = {
+        comun: { titulo: 'Gastos comunes 50/50', monto: 0, items: [] },
+        proporcional: { titulo: 'Alquiler proporcional', monto: 0, items: [] },
+        privado: { titulo: 'Personales pagados por el otro', monto: 0, items: [] },
+        devolucion: { titulo: 'Devoluciones registradas', monto: 0, items: [] }
+    };
     const totalIngresos = sueldoDamian + sueldoMaxi;
     const pctDamian = totalIngresos > 0 ? sueldoDamian / totalIngresos : 0.5;
     const pctMaxi = totalIngresos > 0 ? sueldoMaxi / totalIngresos : 0.5;
+
+    function registrarDetalle(grupo, gasto, pagadorFinanciero, efectoDamian) {
+        if (!detalleBalance[grupo]) return;
+        detalleBalance[grupo].monto += efectoDamian;
+        detalleBalance[grupo].items.push({
+            concepto: gasto.concepto || 'Sin concepto',
+            monto: Number(gasto.monto || 0),
+            pagadoPor: pagadorFinanciero,
+            consumidor: normalizarUsuarioId(gasto.pagadoPor),
+            efectoDamian
+        });
+    }
 
     gastos.forEach(gasto => {
         const monto = Number(gasto.monto || 0);
         const consumidor = normalizarUsuarioId(gasto.pagadoPor);
         const reparto = gasto.tipoReparto;
         const pagadorFinanciero = obtenerPagadorFinanciero(gasto, tarjetas);
+        let efectoDamian = 0;
 
         if (reparto === 'comun') {
             if (pagadorFinanciero === USUARIOS.DAMIAN) {
-                balanceNetoDamian += monto * 0.5;
+                efectoDamian = monto * 0.5;
                 totalPagadoDamian += monto;
             } else {
-                balanceNetoDamian -= monto * 0.5;
+                efectoDamian = -monto * 0.5;
                 totalPagadoMaxi += monto;
             }
+            balanceNetoDamian += efectoDamian;
+            registrarDetalle('comun', gasto, pagadorFinanciero, efectoDamian);
         } else if (reparto === 'proporcional') {
             if (pagadorFinanciero === USUARIOS.DAMIAN) {
-                balanceNetoDamian += monto * pctMaxi;
+                efectoDamian = monto * pctMaxi;
                 totalPagadoDamian += monto;
             } else {
-                balanceNetoDamian -= monto * pctDamian;
+                efectoDamian = -monto * pctDamian;
                 totalPagadoMaxi += monto;
             }
+            balanceNetoDamian += efectoDamian;
+            registrarDetalle('proporcional', gasto, pagadorFinanciero, efectoDamian);
         } else if (reparto === 'privado') {
             if (consumidor === USUARIOS.DAMIAN && pagadorFinanciero === USUARIOS.MAXI) {
-                balanceNetoDamian -= monto;
+                efectoDamian = -monto;
                 totalPagadoMaxi += monto;
             } else if (consumidor === USUARIOS.MAXI && pagadorFinanciero === USUARIOS.DAMIAN) {
-                balanceNetoDamian += monto;
+                efectoDamian = monto;
                 totalPagadoDamian += monto;
             }
+            balanceNetoDamian += efectoDamian;
+            if (efectoDamian) registrarDetalle('privado', gasto, pagadorFinanciero, efectoDamian);
         } else if (reparto === 'devolucion') {
-            if (consumidor === USUARIOS.DAMIAN) balanceNetoDamian += monto;
-            else balanceNetoDamian -= monto;
+            efectoDamian = consumidor === USUARIOS.DAMIAN ? monto : -monto;
+            balanceNetoDamian += efectoDamian;
+            registrarDetalle('devolucion', gasto, pagadorFinanciero, efectoDamian);
         }
     });
 
@@ -128,6 +154,7 @@ export function calcularBalanceNeteado({ gastos = [], tarjetas = [], sueldoDamia
         balanceNetoDamian,
         totalPagadoDamian,
         totalPagadoMaxi,
+        detalleBalance,
         estadoDeuda,
         estaAlDia: !estadoDeuda
     };

@@ -30,20 +30,22 @@ const pantallaLoginWrapper = document.getElementById('pantalla-login-wrapper');
 const seccionApp = document.getElementById('seccion-app');
 const formLogin = document.getElementById('form-login');
 const filtroMesInput = document.getElementById('filtro-mes');
+const fechaManualInput = document.getElementById('fecha-manual');
 const periodoImputacionInput = document.getElementById('periodo-imputacion');
+const ayudaPeriodo = document.getElementById('ayuda-periodo');
 
 const hoy = new Date();
 const mesActualStr = hoy.toISOString().slice(0, 7);
 filtroMesInput.value = mesActualStr;
 periodoImputacionInput.value = mesActualStr;
-document.getElementById('fecha-manual').value = hoy.toISOString().split('T')[0];
+fechaManualInput.value = hoy.toISOString().split('T')[0];
 document.getElementById('cuota-fecha').value = hoy.toISOString().split('T')[0];
 document.getElementById('traspaso-fecha').value = hoy.toISOString().split('T')[0];
 document.getElementById('pago-tarjeta-fecha').value = hoy.toISOString().split('T')[0];
 document.getElementById('prestamo-fecha-inicio').value = "2026-02-01";
 
 filtroMesInput.addEventListener('change', () => {
-    periodoImputacionInput.value = filtroMesInput.value;
+    sugerirPeriodoImputacion();
     escucharGastosEnTiempoReal();
     cargarIngresosYsaldoDelMes();
 });
@@ -54,6 +56,61 @@ function obtenerNombreUsuario(email) {
 
 function usuarioLabelSeguro(valor, corto = false) {
     return escapeHTML(corto ? usuarioCorto(valor) : usuarioNombre(valor));
+}
+
+function obtenerPeriodoDesdeFecha(fechaValor, sumarMes = false) {
+    if (!fechaValor) return mesActualStr;
+    const fecha = new Date(fechaValor + "T12:00:00");
+    if (isNaN(fecha.getTime())) return mesActualStr;
+    if (sumarMes) fecha.setMonth(fecha.getMonth() + 1);
+    return fecha.toISOString().slice(0, 7);
+}
+
+function obtenerPeriodoSugerido() {
+    const tipo = document.getElementById('tipo-reparto')?.value || 'comun';
+    const formato = document.getElementById('formato-pago')?.value || 'efectivo';
+
+    if (tipo === 'proporcional') return obtenerPeriodoDesdeFecha(fechaManualInput.value, false);
+    if (tipo === 'privado') return obtenerPeriodoDesdeFecha(fechaManualInput.value, formato === 'tarjeta');
+    return obtenerPeriodoDesdeFecha(fechaManualInput.value, true);
+}
+
+function obtenerPeriodoSugeridoParaGasto({ fechaValor, tipo = 'comun', formato = 'efectivo' }) {
+    if (tipo === 'proporcional') return obtenerPeriodoDesdeFecha(fechaValor, false);
+    if (tipo === 'privado') return obtenerPeriodoDesdeFecha(fechaValor, formato === 'tarjeta');
+    return obtenerPeriodoDesdeFecha(fechaValor, true);
+}
+
+function actualizarAyudaPeriodo() {
+    if (!ayudaPeriodo) return;
+
+    const tipo = document.getElementById('tipo-reparto')?.value || 'comun';
+    const formato = document.getElementById('formato-pago')?.value || 'efectivo';
+    const periodo = periodoImputacionInput.value || obtenerPeriodoSugerido();
+    const [anio, mes] = periodo.split('-');
+    const nombrePeriodo = anio && mes
+        ? new Date(Number(anio), Number(mes) - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+        : 'el período elegido';
+
+    if (tipo === 'proporcional') {
+        ayudaPeriodo.textContent = `Alquiler: se reparte en ${nombrePeriodo}.`;
+    } else if (tipo === 'privado' && formato === 'tarjeta') {
+        ayudaPeriodo.textContent = `Personal con tarjeta: se controla en el resumen de ${nombrePeriodo}.`;
+    } else if (tipo === 'privado') {
+        ayudaPeriodo.textContent = `Personal sin tarjeta: impacta en tu caja de ${nombrePeriodo}.`;
+    } else {
+        ayudaPeriodo.textContent = `Común: descuenta caja por fecha real y se reparte en ${nombrePeriodo}.`;
+    }
+}
+
+function sugerirPeriodoImputacion({ forzar = false } = {}) {
+    if (!forzar && periodoEditadoManual) {
+        actualizarAyudaPeriodo();
+        return;
+    }
+
+    periodoImputacionInput.value = obtenerPeriodoSugerido();
+    actualizarAyudaPeriodo();
 }
 
 
@@ -101,6 +158,8 @@ let idGastoEnEdicionPeriodo = null;
 let esEdicionMasiva = false;
 let modoSeleccionActivoComun = false;
 let modoSeleccionActivoPrivado = false;
+let usuarioActivoId = '';
+let periodoEditadoManual = false;
 
 function reemplazarSuscripcion(nombre, nuevaSuscripcion) {
     if (suscripcionesTiempoReal[nombre]) suscripcionesTiempoReal[nombre]();
@@ -129,8 +188,10 @@ onAuthStateChanged(auth, (user) => {
         pantallaLoginWrapper.classList.add('oculto');
         seccionApp.classList.remove('oculto');
         const nombreUser = obtenerNombreUsuario(user.email);
+        usuarioActivoId = nombreUser;
         document.getElementById('usuario-activo-email').textContent = usuarioCorto(nombreUser);
         document.getElementById('nombre-privado-titular').textContent = usuarioNombre(nombreUser);
+        queueMicrotask(() => sincronizarCargaConUsuario());
 
         escucharTarjetasYcuentas();
         escucharGastosEnTiempoReal();
@@ -138,6 +199,7 @@ onAuthStateChanged(auth, (user) => {
         escucharPrestamoYcuotas();
         escucharTraspasosYPagosTarjetas();
     } else {
+        usuarioActivoId = '';
         limpiarSuscripcionesTiempoReal();
         pantallaLoginWrapper.classList.remove('oculto');
         seccionApp.classList.add('oculto');
@@ -155,12 +217,28 @@ formLogin.addEventListener('submit', async (e) => {
 document.getElementById('btn-logout').addEventListener('click', () => signOut(auth));
 
 document.getElementById('btn-exportar-mes').addEventListener('click', () => exportarMesActualCSV());
+document.getElementById('btn-toggle-detalle-balance').addEventListener('click', () => {
+    const detalle = document.getElementById('detalle-balance-box');
+    detalle.classList.toggle('oculto');
+    document.getElementById('btn-toggle-detalle-balance').textContent = detalle.classList.contains('oculto') ? 'Ver detalle del cálculo' : 'Ocultar detalle';
+});
 
 window.cambiarVista = function(idVista, boton) {
+    const navMas = document.getElementById('nav-mas');
+    if (navMas && !['vista-prestamos', 'vista-tarjetas'].includes(idVista)) navMas.classList.add('oculto');
+
     document.querySelectorAll('.modulo-vista').forEach(v => v.classList.add('oculto'));
     document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('activo'));
     document.getElementById(idVista).classList.remove('oculto');
     boton.classList.add('activo');
+};
+
+window.toggleNavMas = function(boton) {
+    const navMas = document.getElementById('nav-mas');
+    if (!navMas) return;
+
+    navMas.classList.toggle('oculto');
+    boton.classList.toggle('activo', !navMas.classList.contains('oculto'));
 };
 
 const categoriasBase = [
@@ -171,11 +249,21 @@ const categoriasBase = [
     '🔧 Service Auto', '📄 Patente', '🛍️ Varios'
 ];
 
+let categoriasExtra = JSON.parse(localStorage.getItem('categoriasExtraGastos') || '[]').filter(Boolean);
+
 const categoriasPorTipo = {
     proporcional: ['🏠 Alquiler'],
-    comun: categoriasBase,
-    privado: ['🚬 Puchos', ...categoriasBase]
+    comun: [...categoriasBase, ...categoriasExtra],
+    privado: ['🚬 Puchos', ...categoriasBase, ...categoriasExtra]
 };
+
+function refrescarCategoriasPorTipo() {
+    const extrasUnicas = [...new Set(categoriasExtra.map(cat => cat.trim()).filter(Boolean))];
+    categoriasExtra = extrasUnicas;
+    localStorage.setItem('categoriasExtraGastos', JSON.stringify(categoriasExtra));
+    categoriasPorTipo.comun = [...categoriasBase, ...categoriasExtra];
+    categoriasPorTipo.privado = ['🚬 Puchos', ...categoriasBase, ...categoriasExtra];
+}
 
 function inicializarSelectoresFiltro() {
     const selectComun = document.getElementById('cat-comun');
@@ -192,6 +280,18 @@ function inicializarSelectoresFiltro() {
 }
 inicializarSelectoresFiltro();
 
+window.agregarCategoriaManual = function() {
+    const input = document.getElementById('nueva-categoria');
+    const valor = input.value.trim();
+    if (!valor) return;
+    if (!categoriasExtra.includes(valor) && !categoriasBase.includes(valor)) categoriasExtra.push(valor);
+    refrescarCategoriasPorTipo();
+    inicializarSelectoresFiltro();
+    actualizarCategoriasManuales();
+    selectCategoriaManual.value = valor;
+    input.value = '';
+};
+
 const selectTipoRepartoManual = document.getElementById('tipo-reparto');
 const selectCategoriaManual = document.getElementById('categoria');
 function actualizarCategoriasManuales() {
@@ -199,16 +299,45 @@ function actualizarCategoriasManuales() {
     (categoriasPorTipo[selectTipoRepartoManual.value] || []).forEach(cat => {
         const op = document.createElement('option'); op.value = cat; op.textContent = cat; selectCategoriaManual.appendChild(op);
     });
+
+    const categoriaPreferida = selectTipoRepartoManual.value === 'proporcional' ? '🏠 Alquiler' : '🛍️ Varios';
+    if ([...selectCategoriaManual.options].some(op => op.value === categoriaPreferida)) {
+        selectCategoriaManual.value = categoriaPreferida;
+    }
 }
-selectTipoRepartoManual.addEventListener('change', actualizarCategoriasManuales);
+selectTipoRepartoManual.addEventListener('change', () => {
+    actualizarCategoriasManuales();
+    sincronizarCargaConUsuario();
+    sugerirPeriodoImputacion();
+});
 actualizarCategoriasManuales();
 
 window.actualizarCategoriasFilaBorrador = function(index) {
     const selectTipo = document.getElementById(`reparto-borrador-${index}`);
     const selectCat = document.getElementById(`cat-borrador-${index}`);
+    const selectMedio = document.getElementById(`medio-borrador-${index}`);
+    const inputPeriodo = document.getElementById(`periodo-borrador-${index}`);
     selectCat.innerHTML = '';
     (categoriasPorTipo[selectTipo.value] || []).forEach(cat => {
         const op = document.createElement('option'); op.value = cat; op.textContent = cat; selectCat.appendChild(op);
+    });
+    if (inputPeriodo) {
+        const formato = selectMedio?.value?.startsWith('tarjeta_') ? 'tarjeta' : (selectMedio?.value?.startsWith('cuenta_') ? 'transferencia' : 'efectivo');
+        inputPeriodo.value = obtenerPeriodoSugeridoParaGasto({ fechaValor: listaBorradoresImportacion[index]?.fechaObj?.toISOString().slice(0, 10), tipo: selectTipo.value, formato });
+    }
+};
+
+window.actualizarPeriodoFilaBorrador = function(index) {
+    const selectTipo = document.getElementById(`reparto-borrador-${index}`);
+    const selectMedio = document.getElementById(`medio-borrador-${index}`);
+    const inputPeriodo = document.getElementById(`periodo-borrador-${index}`);
+    if (!selectTipo || !selectMedio || !inputPeriodo) return;
+
+    const formato = selectMedio.value.startsWith('tarjeta_') ? 'tarjeta' : (selectMedio.value.startsWith('cuenta_') ? 'transferencia' : 'efectivo');
+    inputPeriodo.value = obtenerPeriodoSugeridoParaGasto({
+        fechaValor: listaBorradoresImportacion[index]?.fechaObj?.toISOString().slice(0, 10),
+        tipo: selectTipo.value,
+        formato
     });
 };
 
@@ -385,6 +514,22 @@ const contCuenta = document.getElementById('contenedor-cuenta');
 const selectGastoTarjeta = document.getElementById('gasto-tarjeta-asociada');
 const selectGastoCuenta = document.getElementById('gasto-cuenta-asociada');
 
+function sincronizarCargaConUsuario() {
+    if (!selectPagadoPor || !selectTipoRepartoManual) return;
+
+    if (usuarioActivoId && selectTipoRepartoManual.value === 'privado') {
+        selectPagadoPor.value = usuarioActivoId;
+        selectPagadoPor.disabled = true;
+        selectPagadoPor.title = 'Los gastos personales se asignan al usuario logueado.';
+    } else {
+        selectPagadoPor.disabled = false;
+        selectPagadoPor.title = '';
+        if (usuarioActivoId && !selectPagadoPor.value) selectPagadoPor.value = usuarioActivoId;
+    }
+
+    actualizarFiltrosMedioPago();
+}
+
 function actualizarFiltrosMedioPago() {
     const quienPaga = selectPagadoPor.value;
     const formato = selectFormatoPago.value;
@@ -412,7 +557,17 @@ function actualizarFiltrosMedioPago() {
 }
 
 selectPagadoPor.addEventListener('change', actualizarFiltrosMedioPago);
-selectFormatoPago.addEventListener('change', actualizarFiltrosMedioPago);
+selectFormatoPago.addEventListener('change', () => {
+    actualizarFiltrosMedioPago();
+    sugerirPeriodoImputacion();
+});
+fechaManualInput.addEventListener('change', () => sugerirPeriodoImputacion());
+periodoImputacionInput.addEventListener('change', () => {
+    periodoEditadoManual = true;
+    actualizarAyudaPeriodo();
+});
+sincronizarCargaConUsuario();
+sugerirPeriodoImputacion({ forzar: true });
 
 document.getElementById('form-tarjeta').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -915,6 +1070,7 @@ document.getElementById('form-gasto').addEventListener('submit', async (e) => {
     const concepto = document.getElementById('concepto').value;
     const montoLimpio = obtenerNumeroLimpio('monto');
     const formato = document.getElementById('formato-pago').value;
+    const tipoReparto = document.getElementById('tipo-reparto').value;
     const fechaManual = document.getElementById('fecha-manual').value;
     const periodoImputacion = document.getElementById('periodo-imputacion').value;
     const fechaGasto = new Date(fechaManual + "T12:00:00");
@@ -928,14 +1084,19 @@ document.getElementById('form-gasto').addEventListener('submit', async (e) => {
     try {
         await addDoc(collection(db, "gastos"), {
         concepto: concepto, monto: montoLimpio, categoria: document.getElementById('categoria').value,
-        pagadoPor: normalizarUsuarioId(document.getElementById('pagado-por').value), tipoReparto: document.getElementById('tipo-reparto').value,
+        pagadoPor: normalizarUsuarioId(document.getElementById('pagado-por').value), tipoReparto,
             formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email,
+            owner: tipoReparto === 'privado' ? usuarioActivoId : 'hogar',
+            esPrivado: tipoReparto === 'privado',
             fecha: fechaGasto, periodo: periodoImputacion
         });
         document.getElementById('form-gasto').reset();
-        document.getElementById('fecha-manual').value = new Date().toISOString().split('T')[0];
-        document.getElementById('periodo-imputacion').value = filtroMesInput.value;
-        actualizarCategoriasManuales(); actualizarFiltrosMedioPago();
+        fechaManualInput.value = new Date().toISOString().split('T')[0];
+        periodoEditadoManual = false;
+        if (usuarioActivoId) selectPagadoPor.value = usuarioActivoId;
+        actualizarCategoriasManuales();
+        sincronizarCargaConUsuario();
+        sugerirPeriodoImputacion({ forzar: true });
     } catch (e) { alert("Error al confirmar el gasto."); }
 });
 
@@ -979,12 +1140,15 @@ document.getElementById('btn-procesar-archivo').addEventListener('click', async 
             const posibleDuplicado = esPosibleDuplicadoImportacion(c);
             if (posibleDuplicado) tr.classList.add('fila-duplicado');
             const avisoDuplicado = posibleDuplicado ? '<br><span class="badge-alerta">Posible duplicado</span>' : '';
+            const formatoInicial = medioImportacion.startsWith('tarjeta_') ? 'tarjeta' : (medioImportacion.startsWith('cuenta_') ? 'transferencia' : 'efectivo');
+            const periodoSugerido = obtenerPeriodoSugeridoParaGasto({ fechaValor: c.fechaObj?.toISOString().slice(0, 10), tipo: 'comun', formato: formatoInicial });
             tr.innerHTML = `
                 <td>${escapeHTML(c.fecha)}</td><td><strong>${escapeHTML(c.concepto)}</strong>${avisoDuplicado}</td><td>$${new Intl.NumberFormat('es-AR').format(c.monto)}</td>
                 <td><select class="mini-select" id="reparto-borrador-${i}" onchange="actualizarCategoriasFilaBorrador(${i})"><option value="comun" selected>Común</option><option value="privado">Personal</option><option value="proporcional">Alquiler %</option></select></td>
                 <td><select class="mini-select" id="cat-borrador-${i}">${optCats}</select></td>
                 <td><select class="mini-select" id="pagador-borrador-${i}"><option value="damian" ${pDefecto === USUARIOS.DAMIAN ? 'selected' : ''}>Damián</option><option value="maxi" ${pDefecto === USUARIOS.MAXI ? 'selected' : ''}>Maxi</option></select></td>
-                <td><select class="mini-select" id="medio-borrador-${i}">${optMedios}</select></td>
+                <td><select class="mini-select" id="medio-borrador-${i}" onchange="actualizarPeriodoFilaBorrador(${i})">${optMedios}</select></td>
+                <td><input type="month" class="mini-input" id="periodo-borrador-${i}" value="${periodoSugerido}"></td>
                 <td><button class="btn-accion-rapida" onclick="confirmarGastoBorrador(${i}, this)">+ Agregar</button></td>`;
             tbody.appendChild(tr);
         });
@@ -1004,6 +1168,8 @@ window.confirmarGastoBorrador = async function(index, boton) {
             return;
         }
         const medioSeleccionado = document.getElementById(`medio-borrador-${index}`).value;
+        const tipoReparto = document.getElementById(`reparto-borrador-${index}`).value;
+        const pagadoPor = normalizarUsuarioId(document.getElementById(`pagador-borrador-${index}`).value);
         let formato = 'efectivo'; let medioId = '';
 
         if (medioSeleccionado.startsWith('tarjeta_')) { formato = 'tarjeta'; medioId = medioSeleccionado.replace('tarjeta_', ''); }
@@ -1011,9 +1177,11 @@ window.confirmarGastoBorrador = async function(index, boton) {
 
         await addDoc(collection(db, "gastos"), {
             concepto: borrador.concepto, monto: borrador.monto, categoria: document.getElementById(`cat-borrador-${index}`).value,
-            pagadoPor: normalizarUsuarioId(document.getElementById(`pagador-borrador-${index}`).value), tipoReparto: document.getElementById(`reparto-borrador-${index}`).value,
+            pagadoPor, tipoReparto,
             formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: borrador.fechaObj || new Date(),
-            periodo: filtroMesInput.value
+            owner: tipoReparto === 'privado' ? pagadoPor : 'hogar',
+            esPrivado: tipoReparto === 'privado',
+            periodo: document.getElementById(`periodo-borrador-${index}`).value || filtroMesInput.value
         });
         boton.parentElement.innerHTML = `<span style="color: var(--success-color); font-weight: bold;">✓ Agregado</span>`;
     } catch (error) { alert("Error al confirmar."); }
@@ -1029,6 +1197,9 @@ window.recalcularBalanceNeteado = function() {
     });
 
     document.getElementById('detalle-saldos').textContent = `Paga al banco/resumen compartido: Damián $${new Intl.NumberFormat('es-AR').format(balance.totalPagadoDamian)} | Maxi $${new Intl.NumberFormat('es-AR').format(balance.totalPagadoMaxi)}`;
+    renderizarDetalleBalance(balance);
+    actualizarCierreMensual(balance);
+    actualizarProyeccion();
 
     const resTexto = document.getElementById('resultado-balance'); const estMetrica = document.getElementById('metric-estado');
     const btnAbrirSaldar = document.getElementById('btn-abrir-saldar'); const contSaldar = document.getElementById('contenedor-saldar-deuda');
@@ -1048,6 +1219,129 @@ window.recalcularBalanceNeteado = function() {
         estMetrica.classList.remove('texto-positivo', 'texto-negativo', 'texto-alerta');
         estMetrica.classList.add('texto-alerta');
         btnAbrirSaldar.classList.remove('oculto'); window.estadoDeudaActual = { deudor: USUARIOS.DAMIAN, monto: balance.estadoDeuda.monto };
+    }
+};
+
+function formatearEfectoBalance(monto) {
+    const montoRedondeado = Math.round(Math.abs(monto));
+    if (montoRedondeado === 0) return '$0';
+    const direccion = monto > 0 ? 'Maxi debe a Damián' : 'Damián debe a Maxi';
+    return `${direccion}: $${new Intl.NumberFormat('es-AR').format(montoRedondeado)}`;
+}
+
+function renderizarDetalleBalance(balance) {
+    const contenedor = document.getElementById('detalle-balance-box');
+    if (!contenedor || !balance.detalleBalance) return;
+
+    const grupos = ['comun', 'proporcional', 'privado', 'devolucion'];
+    const htmlGrupos = grupos.map((clave) => {
+        const grupo = balance.detalleBalance[clave];
+        if (!grupo || !grupo.items.length) return '';
+
+        const items = grupo.items.slice(0, 8).map((item) => `
+            <p>
+                <span>${escapeHTML(item.concepto)} <small>(${usuarioLabelSeguro(item.pagadoPor, true)})</small></span>
+                <span>${formatearEfectoBalance(item.efectoDamian)}</span>
+            </p>
+        `).join('');
+        const resto = grupo.items.length > 8
+            ? `<p><span>Y ${grupo.items.length - 8} movimientos más</span><span>${formatearEfectoBalance(grupo.items.slice(8).reduce((total, item) => total + item.efectoDamian, 0))}</span></p>`
+            : '';
+
+        return `
+            <div class="detalle-balance-grupo">
+                <h3><span>${escapeHTML(grupo.titulo)}</span><span>${formatearEfectoBalance(grupo.monto)}</span></h3>
+                ${items}
+                ${resto}
+            </div>
+        `;
+    }).join('');
+
+    contenedor.innerHTML = htmlGrupos || '<p class="balance-subtext">No hay movimientos para explicar en este período.</p>';
+    contenedor.innerHTML += `<p class="detalle-balance-total">${formatearEfectoBalance(balance.balanceNetoDamian)}</p>`;
+}
+
+function mesSiguiente(periodo) {
+    const [anio, mes] = periodo.split('-').map(Number);
+    if (!anio || !mes) return mesActualStr;
+    const fecha = new Date(anio, mes, 1);
+    return fecha.toISOString().slice(0, 7);
+}
+
+function obtenerLiquidezActual(userActivo, periodoActual) {
+    return calcularLiquidezPersonal({
+        gastos: listaGastosCompletaBase,
+        tarjetas: listaTarjetasGlobal,
+        cuentas: listaCuentasGlobal,
+        cuotasPrestamo: listaCuotasPrestamoGlobal,
+        traspasos: listaTraspasosGlobal,
+        pagosTarjeta: listaPagosTarjetasGlobal,
+        periodoActual,
+        userActivo,
+        saldosBase: {
+            efectivo: obtenerNumeroLimpio('saldo-base-efectivo'),
+            galicia: obtenerNumeroLimpio('saldo-base-galicia'),
+            mp: obtenerNumeroLimpio('saldo-base-mp')
+        }
+    });
+}
+
+function actualizarProyeccion() {
+    if (!auth.currentUser) return;
+    const periodoActual = filtroMesInput.value;
+    const periodoProyectado = mesSiguiente(periodoActual);
+    const userActivo = obtenerNombreUsuario(auth.currentUser.email);
+    const liquidezActual = obtenerLiquidezActual(userActivo, periodoActual);
+    const liquidezProyectada = obtenerLiquidezActual(userActivo, periodoProyectado);
+    const ingresoEsperado = obtenerNumeroLimpio('proy-ingreso');
+    const otrosFijos = obtenerNumeroLimpio('proy-fijos');
+
+    const balanceProyectado = calcularBalanceNeteado({
+        gastos: listaGastosCompletaBase.filter(gasto => {
+            const fechaObj = gasto.fecha ? gasto.fecha.toDate ? gasto.fecha.toDate() : new Date(gasto.fecha) : new Date();
+            return (gasto.periodo || fechaObj.toISOString().slice(0, 7)) === periodoProyectado;
+        }),
+        tarjetas: listaTarjetasGlobal,
+        sueldoDamian: obtenerNumeroLimpio('sueldo-damian'),
+        sueldoMaxi: obtenerNumeroLimpio('sueldo-maxi')
+    });
+    const deudaAFavor = balanceProyectado.estadoDeuda && balanceProyectado.estadoDeuda.acreedor === userActivo ? balanceProyectado.estadoDeuda.monto : 0;
+    const deudaAPagar = balanceProyectado.estadoDeuda && balanceProyectado.estadoDeuda.deudor === userActivo ? balanceProyectado.estadoDeuda.monto : 0;
+    const saldoFinal = liquidezActual.disponibilidades.total + ingresoEsperado + deudaAFavor - deudaAPagar - liquidezProyectada.tarjetas.total - otrosFijos;
+
+    const elTotal = document.getElementById('proy-total');
+    const elDetalle = document.getElementById('proy-detalle');
+    if (!elTotal || !elDetalle) return;
+    elTotal.textContent = "$" + new Intl.NumberFormat('es-AR').format(Math.round(saldoFinal));
+    aplicarColorMonto(elTotal, saldoFinal);
+    elDetalle.textContent = `Mes proyectado ${periodoProyectado}: saldo actual $${new Intl.NumberFormat('es-AR').format(Math.round(liquidezActual.disponibilidades.total))} + ingresos $${new Intl.NumberFormat('es-AR').format(ingresoEsperado)} + a cobrar $${new Intl.NumberFormat('es-AR').format(deudaAFavor)} - a pagar $${new Intl.NumberFormat('es-AR').format(deudaAPagar)} - tarjetas $${new Intl.NumberFormat('es-AR').format(Math.round(liquidezProyectada.tarjetas.total))} - fijos $${new Intl.NumberFormat('es-AR').format(otrosFijos)}.`;
+}
+
+function actualizarCierreMensual(balance) {
+    const contenedor = document.getElementById('resumen-cierre-mensual');
+    if (!contenedor) return;
+    const periodo = filtroMesInput.value;
+    const estado = balance.estadoDeuda
+        ? `${usuarioNombre(balance.estadoDeuda.deudor)} le debe $${new Intl.NumberFormat('es-AR').format(balance.estadoDeuda.monto)} a ${usuarioNombre(balance.estadoDeuda.acreedor)}`
+        : 'Las cuentas están al día';
+    contenedor.innerHTML = `
+        <div class="detalle-balance-grupo">
+            <h3><span>Período ${escapeHTML(periodo)}</span><span>${escapeHTML(estado)}</span></h3>
+            <p><span>Pagado por Damián</span><span>$${new Intl.NumberFormat('es-AR').format(Math.round(balance.totalPagadoDamian))}</span></p>
+            <p><span>Pagado por Maxi</span><span>$${new Intl.NumberFormat('es-AR').format(Math.round(balance.totalPagadoMaxi))}</span></p>
+            <p><span>Resultado neto</span><span>${formatearEfectoBalance(balance.balanceNetoDamian)}</span></p>
+        </div>
+    `;
+}
+
+window.copiarCierreMensual = async function() {
+    const texto = document.getElementById('resumen-cierre-mensual')?.innerText || '';
+    if (!texto) return;
+    try {
+        await navigator.clipboard.writeText(texto);
+        alert('Resumen de cierre copiado.');
+    } catch (error) {
+        alert(texto);
     }
 };
 
@@ -1116,6 +1410,7 @@ window.calcularDineroPersonalPrivado = function() {
     document.getElementById('credito-propio').textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.tarjetas.propia);
     document.getElementById('credito-extension').textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.tarjetas.extension);
     document.getElementById('credito-total-tarjetas').textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.tarjetas.total);
+    actualizarProyeccion();
 };
 
 inicializarInputsMonto();

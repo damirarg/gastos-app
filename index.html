@@ -49,10 +49,13 @@
 
             <!-- NAV TABS -->
             <nav class="nav-acciones">
-                <button class="btn-tab activo" onclick="cambiarVista('vista-dashboard', this)">📊 Dashboard Común</button>
-                <button class="btn-tab" onclick="cambiarVista('vista-importador', this)">📄 Importar Planilla</button>
-                <button class="btn-tab" onclick="cambiarVista('vista-manual', this)">📝 Carga Manual</button>
-                <button class="btn-tab" onclick="cambiarVista('vista-privada', this)">🔒 Finanzas Privadas</button>
+                <button class="btn-tab activo" onclick="cambiarVista('vista-manual', this)">➕ Cargar</button>
+                <button class="btn-tab" onclick="cambiarVista('vista-dashboard', this)">📊 Resumen</button>
+                <button class="btn-tab" onclick="cambiarVista('vista-importador', this)">📄 Importar</button>
+                <button class="btn-tab" onclick="cambiarVista('vista-privada', this)">🔒 Finanzas</button>
+                <button class="btn-tab" onclick="toggleNavMas(this)">⋯ Más</button>
+            </nav>
+            <nav id="nav-mas" class="nav-acciones nav-secundaria oculto">
                 <button class="btn-tab" onclick="cambiarVista('vista-prestamos', this)">🤝 Préstamos</button>
                 <button class="btn-tab" onclick="cambiarVista('vista-tarjetas', this)">💳 Medios de Pago</button>
             </nav>
@@ -69,7 +72,7 @@
             </section>
 
             <!-- VISTA 1: DASHBOARD COMÚN -->
-            <div id="vista-dashboard" class="modulo-vista">
+            <div id="vista-dashboard" class="modulo-vista oculto">
                 <div class="grid-3" style="margin-bottom: 24px;">
                     <div class="metric-card"><label>Gasto Común del Mes</label><div class="metric-val" id="metric-total-mes">$0</div></div>
                     <div class="metric-card"><label>Promedio por Categoría Común</label><div class="metric-val" id="metric-promedio">$0</div></div>
@@ -86,8 +89,10 @@
                         <p class="balance-text" id="resultado-balance">Calculando balance del mes...</p>
                         <p class="balance-subtext" id="detalle-saldos">Paga al banco/resumen compartido: Damián $0 | Maxi $0</p>
                         <div style="margin-top: 16px;">
+                            <button id="btn-toggle-detalle-balance" class="btn-secundario" style="width: auto; padding: 8px 16px; font-size: 13px;">Ver detalle del cálculo</button>
                             <button id="btn-abrir-saldar" class="btn-secundario oculto" style="width: auto; padding: 8px 16px; font-size: 13px;">Saldar Deuda 🤝</button>
                         </div>
+                        <div id="detalle-balance-box" class="detalle-balance oculto"></div>
                     </div>
 
                     <div id="contenedor-saldar-deuda" class="oculto" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
@@ -159,7 +164,7 @@
                         <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--accent-color);">📋 Planilla Borrador - Seleccioná y confirmá cada consumo:</h3>
                         <div class="tabla-wrapper">
                             <table>
-                                <thead><tr><th>Fecha</th><th>Detalle / Comercio</th><th>Monto ($)</th><th>Tipo Gasto</th><th>Categoría</th><th>Consumió</th><th>Medio de Pago</th><th>Confirmar</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th>Detalle / Comercio</th><th>Monto ($)</th><th>Tipo Gasto</th><th>Categoría</th><th>Consumió</th><th>Medio de Pago</th><th>Impacta en</th><th>Confirmar</th></tr></thead>
                                 <tbody id="tabla-previa-ia-body"></tbody>
                             </table>
                         </div>
@@ -168,22 +173,34 @@
             </div>
 
             <!-- VISTA 3: CARGA MANUAL -->
-            <div id="vista-manual" class="modulo-vista oculto">
+            <div id="vista-manual" class="modulo-vista">
                 <section class="card">
-                    <h2>Registrar Nuevo Gasto Manual 📝</h2>
-                    <form id="form-gasto">
+                    <h2>Cargar Gasto ➕</h2>
+                    <div class="carga-rapida">
+                        <h3>Carga rápida</h3>
                         <div class="grid-4">
+                            <button type="button" class="btn-secundario" onclick="prepararCargaRapida('comun', 'efectivo')">Común efectivo</button>
+                            <button type="button" class="btn-secundario" onclick="prepararCargaRapida('comun', 'tarjeta')">Común tarjeta</button>
+                            <button type="button" class="btn-secundario" onclick="prepararCargaRapida('privado', 'transferencia')">Personal MP/Galicia</button>
+                            <button type="button" class="btn-secundario" onclick="prepararCargaRapida('privado', 'tarjeta')">Personal tarjeta</button>
+                        </div>
+                    </div>
+                    <form id="form-gasto">
+                        <div class="grid-3">
                             <div class="form-group">
-                                <label for="tipo-reparto">1. Tipo de Gasto</label>
+                                <label for="tipo-reparto">Tipo de gasto</label>
                                 <select id="tipo-reparto">
-                                    <option value="proporcional">🏠 Alquiler (% de ingresos)</option>
                                     <option value="comun" selected>🤝 Gasto Común (50 / 50)</option>
-                                    <option value="privado">👤 Gasto Personal (100% propio)</option>
+                                    <option value="proporcional">🏠 Alquiler (% de ingresos)</option>
+                                    <option value="privado">👤 Personal mío</option>
                                 </select>
                             </div>
-                            <div class="form-group"><label for="categoria">2. Categoría</label><select id="categoria"></select></div>
-                            <div class="form-group"><label for="fecha-manual">3. Fecha del Gasto</label><input type="date" id="fecha-manual" required></div>
-                            <div class="form-group"><label for="periodo-imputacion">4. Período Imputación</label><input type="month" id="periodo-imputacion" required></div>
+                            <div class="form-group"><label for="fecha-manual">Fecha del gasto</label><input type="date" id="fecha-manual" required></div>
+                            <div class="form-group">
+                                <label for="periodo-imputacion">Impacta en</label>
+                                <input type="month" id="periodo-imputacion" required>
+                                <small id="ayuda-periodo" class="ayuda-campo">Se completa según el tipo de gasto.</small>
+                            </div>
                         </div>
 
                         <div class="grid-2">
@@ -191,13 +208,19 @@
                             <div class="form-group"><label for="monto">Monto ($)</label><input type="text" id="monto" class="monto-input" placeholder="Ej: 45.000" inputmode="numeric" required></div>
                         </div>
 
-                        <div class="grid-3">
+                        <div class="grid-2">
                             <div class="form-group"><label for="pagado-por">¿Quién hizo el gasto?</label><select id="pagado-por"><option value="damian">Damián</option><option value="maxi">Maxi</option></select></div>
                             <div class="form-group"><label for="formato-pago">Formato de Pago</label><select id="formato-pago"><option value="efectivo">💵 Efectivo</option><option value="tarjeta">💳 Tarjeta de Crédito</option><option value="transferencia">🏦 Transferencia / Billetera</option></select></div>
+                        </div>
+
+                        <button type="button" class="btn-secundario btn-opciones" onclick="document.getElementById('opciones-avanzadas-carga').classList.toggle('oculto')">Más opciones</button>
+                        <div id="opciones-avanzadas-carga" class="grid-3 oculto">
+                            <div class="form-group"><label for="categoria">Categoría</label><select id="categoria"></select></div>
+                            <div class="form-group"><label for="nueva-categoria">Nueva categoría</label><div class="input-con-boton"><input type="text" id="nueva-categoria" placeholder="Ej: Colegio"><button type="button" class="btn-secundario" onclick="agregarCategoriaManual()">+</button></div></div>
                             <div class="form-group" id="contenedor-tarjeta" style="display: none;"><label for="gasto-tarjeta-asociada">Seleccionar Tarjeta</label><select id="gasto-tarjeta-asociada"></select></div>
                             <div class="form-group" id="contenedor-cuenta" style="display: none;"><label for="gasto-cuenta-asociada">Seleccionar Cuenta</label><select id="gasto-cuenta-asociada"></select></div>
                         </div>
-                        <button type="submit" id="btn-guardar" style="margin-top:10px;">Cargar Gasto 🚀</button>
+                        <button type="submit" id="btn-guardar" style="margin-top:10px;">Guardar Gasto</button>
                     </form>
                 </section>
             </div>
@@ -247,6 +270,16 @@
                         <div class="metric-card"><label>Mercado Pago Disp.</label><div class="metric-val" id="disp-mp" style="font-size: 18px;">$0</div></div>
                         <div class="metric-card" style="border-color: var(--success-color); background: #f4faf6;"><label style="color: var(--success-color); font-weight: 600;">LIQUIDEZ TOTAL REAL</label><div class="metric-val" id="disp-total-liquidez" style="color: var(--success-color);">$0</div></div>
                     </div>
+
+                    <section class="panel-simple">
+                        <h3>Proyección del mes siguiente</h3>
+                        <div class="grid-3">
+                            <div class="form-group"><label for="proy-ingreso">Ingreso esperado ($)</label><input type="text" id="proy-ingreso" class="monto-input" placeholder="Ej: sueldo + extras"></div>
+                            <div class="form-group"><label for="proy-fijos">Otros pagos fijos ($)</label><input type="text" id="proy-fijos" class="monto-input" placeholder="Ej: obra social, servicios"></div>
+                            <div class="metric-card"><label>Saldo proyectado</label><div class="metric-val" id="proy-total">$0</div></div>
+                        </div>
+                        <div id="proy-detalle" class="balance-subtext">Completá ingreso esperado para proyectar.</div>
+                    </section>
 
                     <!-- SECCIÓN: MOVIMIENTO ENTRE CUENTAS PROPIAS -->
                     <div style="background: #fafafa; padding: 18px; border-radius: 14px; border: 1px solid var(--border-color); margin-bottom: 24px;">
@@ -409,6 +442,12 @@
                             <tbody id="tabla-prestamo-cuotas-body"><tr><td colspan="5" style="text-align: center; color: var(--text-secondary);">No hay pagos registrados.</td></tr></tbody>
                         </table>
                     </div>
+                </section>
+
+                <section class="card">
+                    <h2>Cierre mensual 📌</h2>
+                    <div id="resumen-cierre-mensual" class="detalle-balance"></div>
+                    <button type="button" class="btn-secundario" style="width: auto;" onclick="copiarCierreMensual()">Copiar resumen de cierre</button>
                 </section>
             </div>
 
