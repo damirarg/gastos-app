@@ -29,7 +29,8 @@ service cloud.firestore {
     }
 
     match /gastos/{gastoId} {
-      allow read: if allowedUser() && canReadGasto();
+      allow list: if allowedUser();
+      allow get: if allowedUser() && canReadGasto();
       allow create, update: if allowedUser() && canWriteGasto();
       allow delete: if allowedUser() && canReadGasto();
     }
