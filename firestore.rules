@@ -18,13 +18,13 @@ service cloud.firestore {
     }
 
     function canReadGasto() {
-      return !resource.data.esPrivado ||
+      return resource.data.esPrivado != true ||
         resource.data.owner == 'hogar' ||
         resource.data.owner == userId();
     }
 
     function canWriteGasto() {
-      return !request.resource.data.esPrivado ||
+      return request.resource.data.esPrivado != true ||
         request.resource.data.owner == userId();
     }
 
