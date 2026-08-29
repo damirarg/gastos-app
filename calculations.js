@@ -167,6 +167,7 @@ export function calcularLiquidezPersonal({
     cuotasPrestamo = [],
     traspasos = [],
     pagosTarjeta = [],
+    ajustesCuenta = [],
     periodoActual,
     periodoCaja = periodoActual,
     userActivo,
@@ -238,6 +239,19 @@ export function calcularLiquidezPersonal({
 
         if (pago.tarjetaTipo === 'extension') totalPagadoExtension += Number(pago.monto || 0);
         else totalPagadoPropia += Number(pago.monto || 0);
+    });
+
+    ajustesCuenta.forEach(ajuste => {
+        if (fechaPeriodoKey(ajuste.fecha) !== periodoCaja) return;
+        if (normalizarUsuarioId(ajuste.owner) !== normalizarUsuarioId(userActivo)) return;
+
+        let impacto = Number(ajuste.monto || 0);
+        if (ajuste.tipo === 'compra_usd') impacto = -Math.abs(impacto);
+        else if (ajuste.tipo === 'rendimiento_mp') impacto = Math.abs(impacto);
+
+        if (ajuste.cuenta === 'efectivo') egresosEfectivo -= impacto;
+        else if (ajuste.cuenta === 'mp') egresosMP -= impacto;
+        else egresosGalicia -= impacto;
     });
 
     const dispEfectivo = Number(saldosBase.efectivo || 0) - egresosEfectivo;

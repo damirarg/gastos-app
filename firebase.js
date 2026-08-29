@@ -42,6 +42,7 @@ fechaManualInput.value = hoy.toISOString().split('T')[0];
 document.getElementById('cuota-fecha').value = hoy.toISOString().split('T')[0];
 document.getElementById('traspaso-fecha').value = hoy.toISOString().split('T')[0];
 document.getElementById('pago-tarjeta-fecha').value = hoy.toISOString().split('T')[0];
+document.getElementById('ajuste-fecha').value = hoy.toISOString().split('T')[0];
 document.getElementById('prestamo-fecha-inicio').value = "2026-02-01";
 
 filtroMesInput.addEventListener('change', () => {
@@ -183,6 +184,7 @@ let listaCuentasGlobal = [];
 let listaCuotasPrestamoGlobal = [];
 let listaTraspasosGlobal = [];
 let listaPagosTarjetasGlobal = [];
+let listaAjustesCuentaGlobal = [];
 let listaBorradoresImportacion = [];
 const suscripcionesTiempoReal = {
     gastos: null,
@@ -191,7 +193,8 @@ const suscripcionesTiempoReal = {
     prestamoConfig: null,
     cuotasPrestamo: null,
     traspasos: null,
-    pagosTarjeta: null
+    pagosTarjeta: null,
+    ajustesCuenta: null
 };
 let idGastoEnEdicionPeriodo = null;
 let esEdicionMasiva = false;
@@ -284,6 +287,7 @@ const categoriasBase = [
     '🛒 Supermercado', '💊 Farmacia', '💡 Luz', '🔥 Gas', '🌐 Internet', '💧 Agua',
     '🏠 Seguro Casa', '🧹 Servicio Doméstico', '🏊‍♂️ Servicio Pileta', '🧪 Insumos Pileta',
     '🐈 Mascotas', '🛠️ Reparaciones Casa', '🍷 Salidas/Ocio', '⚕️ Obra Social',
+    '📺 Suscripción Streaming', '🤖 Suscripción IA',
     '👕 Vestimenta', '✂️ Peluquería', '⛽ Combustible', '🚗 Seguro Auto',
     '🔧 Service Auto', '📄 Patente', '🛍️ Varios'
 ];
@@ -814,6 +818,50 @@ function escucharTraspasosYPagosTarjetas() {
         });
         if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
     }));
+
+    const qAjustes = query(collection(db, "ajustes_cuenta"), orderBy("fecha", "desc"));
+    reemplazarSuscripcion('ajustesCuenta', onSnapshot(qAjustes, (snapshot) => {
+        listaAjustesCuentaGlobal = [];
+        snapshot.forEach((docSnap) => {
+            const ajuste = docSnap.data(); ajuste.id = docSnap.id;
+            listaAjustesCuentaGlobal.push(ajuste);
+        });
+        renderizarAjustesCuenta();
+        if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+    }));
+}
+
+function renderizarAjustesCuenta() {
+    const contenedor = document.getElementById('lista-ajustes-cuenta');
+    if (!contenedor || !auth.currentUser) return;
+
+    const userActivo = obtenerNombreUsuario(auth.currentUser.email);
+    const ajustes = listaAjustesCuentaGlobal
+        .filter(ajuste => normalizarUsuarioId(ajuste.owner) === userActivo)
+        .slice(0, 6);
+
+    if (!ajustes.length) {
+        contenedor.innerHTML = '<p class="balance-subtext">No hay ajustes registrados.</p>';
+        return;
+    }
+
+    contenedor.innerHTML = ajustes.map((ajuste) => {
+        const fechaObj = ajuste.fecha ? ajuste.fecha.toDate ? ajuste.fecha.toDate() : new Date(ajuste.fecha) : new Date();
+        const fecha = fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+        const signo = ajuste.tipo === 'compra_usd' ? '-' : '+';
+        return `
+            <div class="item-compacto">
+                <span>${fecha} · ${escapeHTML(describirTipoAjuste(ajuste.tipo))} · ${escapeHTML(ajuste.cuenta || '')}</span>
+                <strong>${signo}$${new Intl.NumberFormat('es-AR').format(Math.abs(Number(ajuste.monto || 0)))}</strong>
+            </div>
+        `;
+    }).join('');
+}
+
+function describirTipoAjuste(tipo) {
+    if (tipo === 'compra_usd') return 'Compra USD';
+    if (tipo === 'rendimiento_mp') return 'Rendimiento MP';
+    return 'Ajuste manual';
 }
 
 document.getElementById('form-traspaso-cuentas').addEventListener('submit', async (e) => {
@@ -859,6 +907,42 @@ document.getElementById('form-pago-tarjeta').addEventListener('submit', async (e
         document.getElementById('contenedor-pago-tarjeta').classList.add('oculto');
         alert("Pago de tarjeta registrado correctamente.");
     } catch (error) { alert("Error al registrar el pago de tarjeta."); }
+});
+
+document.getElementById('form-ajuste-cuenta').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const tipo = document.getElementById('ajuste-tipo').value;
+    const cuenta = document.getElementById('ajuste-cuenta').value;
+    const monto = obtenerNumeroLimpio('ajuste-monto');
+    const usd = obtenerNumeroLimpio('ajuste-usd');
+    const cotizacion = obtenerNumeroLimpio('ajuste-cotizacion');
+    const fecha = new Date(document.getElementById('ajuste-fecha').value + "T12:00:00");
+    const nota = document.getElementById('ajuste-nota').value.trim();
+
+    if (!monto) return;
+
+    try {
+        await addDoc(collection(db, "ajustes_cuenta"), {
+            tipo,
+            cuenta,
+            monto,
+            usd,
+            cotizacion,
+            nota,
+            fecha,
+            owner: usuarioActivoId,
+            usuarioCreador: auth.currentUser.email
+        });
+        document.getElementById('form-ajuste-cuenta').reset();
+        document.getElementById('ajuste-fecha').value = new Date().toISOString().split('T')[0];
+    } catch (error) {
+        alert("Error al registrar el ajuste.");
+    }
+});
+
+document.getElementById('ajuste-tipo').addEventListener('change', (e) => {
+    if (e.target.value === 'compra_usd') document.getElementById('ajuste-cuenta').value = 'galicia';
+    if (e.target.value === 'rendimiento_mp') document.getElementById('ajuste-cuenta').value = 'mp';
 });
 
 // LÓGICA DE PRÉSTAMOS
@@ -1357,6 +1441,7 @@ function obtenerLiquidezActual(userActivo, periodoActual) {
         cuotasPrestamo: listaCuotasPrestamoGlobal,
         traspasos: listaTraspasosGlobal,
         pagosTarjeta: listaPagosTarjetasGlobal,
+        ajustesCuenta: listaAjustesCuentaGlobal,
         periodoActual,
         periodoCaja: mesActualStr,
         userActivo,
@@ -1466,6 +1551,7 @@ window.calcularDineroPersonalPrivado = function() {
         cuotasPrestamo: listaCuotasPrestamoGlobal,
         traspasos: listaTraspasosGlobal,
         pagosTarjeta: listaPagosTarjetasGlobal,
+        ajustesCuenta: listaAjustesCuentaGlobal,
         periodoActual,
         periodoCaja: mesActualStr,
         userActivo,

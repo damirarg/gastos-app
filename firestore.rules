@@ -55,6 +55,10 @@ service cloud.firestore {
       allow read, write: if allowedUser();
     }
 
+    match /ajustes_cuenta/{document} {
+      allow read, write: if allowedUser();
+    }
+
     match /cuotas_prestamo/{document} {
       allow read, write: if allowedUser();
     }
