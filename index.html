@@ -215,13 +215,16 @@
                         </div>
 
                         <div class="grid-2">
+                            <div class="form-group"><label for="categoria">Categoría</label><select id="categoria"></select></div>
+                        </div>
+
+                        <div class="grid-2">
                             <div class="form-group"><label for="pagado-por">¿Quién hizo el gasto?</label><select id="pagado-por"><option value="damian">Damián</option><option value="maxi">Maxi</option></select></div>
                             <div class="form-group"><label for="formato-pago">Formato de Pago</label><select id="formato-pago"><option value="efectivo">💵 Efectivo</option><option value="tarjeta">💳 Tarjeta de Crédito</option><option value="transferencia">🏦 Transferencia / Billetera</option></select></div>
                         </div>
 
                         <button type="button" class="btn-secundario btn-opciones" onclick="document.getElementById('opciones-avanzadas-carga').classList.toggle('oculto')">Más opciones</button>
                         <div id="opciones-avanzadas-carga" class="grid-3 oculto">
-                            <div class="form-group"><label for="categoria">Categoría</label><select id="categoria"></select></div>
                             <div class="form-group"><label for="nueva-categoria">Nueva categoría</label><div class="input-con-boton"><input type="text" id="nueva-categoria" placeholder="Ej: Colegio"><button type="button" class="btn-secundario" onclick="agregarCategoriaManual()">+</button></div></div>
                             <div class="form-group" id="contenedor-tarjeta" style="display: none;"><label for="gasto-tarjeta-asociada">Seleccionar Tarjeta</label><select id="gasto-tarjeta-asociada"></select></div>
                             <div class="form-group" id="contenedor-cuenta" style="display: none;"><label for="gasto-cuenta-asociada">Seleccionar Cuenta</label><select id="gasto-cuenta-asociada"></select></div>
