@@ -5,8 +5,16 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function allowedUser() {
+      return signedIn() &&
+        request.auth.token.email in [
+          'maxivivallo@gmail.com',
+          'damirodriguez81@gmail.com'
+        ];
+    }
+
     function userId() {
-      return request.auth.token.email.matches('.*maxi.*') ? 'maxi' : 'damian';
+      return request.auth.token.email == 'maxivivallo@gmail.com' ? 'maxi' : 'damian';
     }
 
     function canReadGasto() {
@@ -21,37 +29,37 @@ service cloud.firestore {
     }
 
     match /gastos/{gastoId} {
-      allow read: if signedIn() && canReadGasto();
-      allow create, update: if signedIn() && canWriteGasto();
-      allow delete: if signedIn() && canReadGasto();
+      allow read: if allowedUser() && canReadGasto();
+      allow create, update: if allowedUser() && canWriteGasto();
+      allow delete: if allowedUser() && canReadGasto();
     }
 
     match /tarjetas/{document} {
-      allow read, write: if signedIn();
+      allow read, write: if allowedUser();
     }
 
     match /cuentas/{document} {
-      allow read, write: if signedIn();
+      allow read, write: if allowedUser();
     }
 
     match /ingresos/{document} {
-      allow read, write: if signedIn();
+      allow read, write: if allowedUser();
     }
 
     match /traspasos_cuentas/{document} {
-      allow read, write: if signedIn();
+      allow read, write: if allowedUser();
     }
 
     match /pagos_tarjeta/{document} {
-      allow read, write: if signedIn();
+      allow read, write: if allowedUser();
     }
 
     match /cuotas_prestamo/{document} {
-      allow read, write: if signedIn();
+      allow read, write: if allowedUser();
     }
 
     match /configuracion/{document} {
-      allow read, write: if signedIn();
+      allow read, write: if allowedUser();
     }
 
     match /{document=**} {
