@@ -137,6 +137,45 @@ function esPosibleDuplicadoImportacion(borrador) {
     });
 }
 
+function extraerConsumosDesdeTextoOCR(texto) {
+    const lineas = texto.split(/\n+/).map(linea => linea.trim()).filter(linea => linea.length > 4);
+    const consumos = [];
+
+    lineas.forEach((linea) => {
+        const fechaMatch = linea.match(/\b(\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?)\b/);
+        const montos = [...linea.matchAll(/(?:\$|\s|^)(-?\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})?|-?\d+(?:,\d{2})?)\b/g)]
+            .map(match => match[1])
+            .filter(valor => /\d/.test(valor));
+        const montoTexto = montos[montos.length - 1];
+        if (!montoTexto) return;
+
+        const monto = Number(montoTexto.replace(/\./g, '').replace(/\s/g, '').replace(',', '.'));
+        if (!monto || Math.abs(monto) < 1) return;
+
+        const fechaTexto = fechaMatch ? fechaMatch[1] : fechaManualInput.value;
+        const partesFecha = fechaTexto.split(/[\/.-]/).map(Number);
+        const anio = partesFecha[2] ? (partesFecha[2] < 100 ? 2000 + partesFecha[2] : partesFecha[2]) : hoy.getFullYear();
+        const fechaObj = partesFecha.length >= 2
+            ? new Date(anio, partesFecha[1] - 1, partesFecha[0], 12, 0, 0, 0)
+            : new Date(fechaManualInput.value + "T12:00:00");
+        const concepto = linea
+            .replace(fechaMatch?.[0] || '', '')
+            .replace(montoTexto, '')
+            .replace(/\$/g, '')
+            .replace(/\s+/g, ' ')
+            .trim() || 'Movimiento detectado';
+
+        consumos.push({
+            fecha: fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+            fechaObj,
+            concepto,
+            monto: Math.round(Math.abs(monto))
+        });
+    });
+
+    return consumos;
+}
+
 let listaGastosGlobal = [];
 let listaGastosCompletaBase = []; // Para calcular saldos reales sin filtrar por periodo
 let listaTarjetasGlobal = [];
@@ -566,8 +605,20 @@ periodoImputacionInput.addEventListener('change', () => {
     periodoEditadoManual = true;
     actualizarAyudaPeriodo();
 });
+document.getElementById('proy-ingreso').addEventListener('input', actualizarProyeccion);
+document.getElementById('proy-fijos').addEventListener('input', actualizarProyeccion);
 sincronizarCargaConUsuario();
 sugerirPeriodoImputacion({ forzar: true });
+
+window.prepararCargaRapida = function(tipo, formato) {
+    selectTipoRepartoManual.value = tipo;
+    selectFormatoPago.value = formato;
+    actualizarCategoriasManuales();
+    sincronizarCargaConUsuario();
+    periodoEditadoManual = false;
+    sugerirPeriodoImputacion({ forzar: true });
+    document.getElementById('concepto').focus();
+};
 
 document.getElementById('form-tarjeta').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1108,54 +1159,84 @@ document.getElementById('btn-procesar-archivo').addEventListener('click', async 
     const btn = document.getElementById('btn-procesar-archivo'); btn.disabled = true;
     try {
         const consumos = await procesarExcelOCSV(file);
-        const tbody = document.getElementById('tabla-previa-ia-body'); tbody.innerHTML = "";
-        document.getElementById('contenedor-previa-ia').classList.remove('oculto');
-
-        let pDefecto = USUARIOS.DAMIAN;
-        if (medioImportacion.startsWith('tarjeta_')) {
-            const id = medioImportacion.replace('tarjeta_', '');
-            const tObj = listaTarjetasGlobal.find(t => t.id === id);
-            if (tObj) pDefecto = normalizarUsuarioId(tObj.titular) || USUARIOS.DAMIAN;
-        } else if (medioImportacion.startsWith('cuenta_')) {
-            const id = medioImportacion.replace('cuenta_', '');
-            const cObj = listaCuentasGlobal.find(c => c.id === id);
-            if (cObj) pDefecto = normalizarUsuarioId(cObj.titular) || USUARIOS.DAMIAN;
-        }
-
-        listaBorradoresImportacion = consumos;
-
-        let optCats = ''; categoriasPorTipo['comun'].forEach(cat => { optCats += `<option value="${escapeAttr(cat)}">${escapeHTML(cat)}</option>`; });
-        let optMedios = `<option value="efectivo">💵 Efectivo / Otra</option>`;
-        listaTarjetasGlobal.forEach(t => {
-            const selected = medioImportacion === `tarjeta_${t.id}` ? 'selected' : '';
-            optMedios += `<option value="tarjeta_${escapeAttr(t.id)}" ${selected}>💳 ${escapeHTML(t.marca)} - ${usuarioLabelSeguro(t.titular, true)}</option>`;
-        });
-        listaCuentasGlobal.forEach(c => {
-            const selected = medioImportacion === `cuenta_${c.id}` ? 'selected' : '';
-            optMedios += `<option value="cuenta_${escapeAttr(c.id)}" ${selected}>🏦 ${escapeHTML(c.banco)} - ${usuarioLabelSeguro(c.titular, true)}</option>`;
-        });
-
-        consumos.forEach((c, i) => {
-            const tr = document.createElement('tr');
-            const posibleDuplicado = esPosibleDuplicadoImportacion(c);
-            if (posibleDuplicado) tr.classList.add('fila-duplicado');
-            const avisoDuplicado = posibleDuplicado ? '<br><span class="badge-alerta">Posible duplicado</span>' : '';
-            const formatoInicial = medioImportacion.startsWith('tarjeta_') ? 'tarjeta' : (medioImportacion.startsWith('cuenta_') ? 'transferencia' : 'efectivo');
-            const periodoSugerido = obtenerPeriodoSugeridoParaGasto({ fechaValor: c.fechaObj?.toISOString().slice(0, 10), tipo: 'comun', formato: formatoInicial });
-            tr.innerHTML = `
-                <td>${escapeHTML(c.fecha)}</td><td><strong>${escapeHTML(c.concepto)}</strong>${avisoDuplicado}</td><td>$${new Intl.NumberFormat('es-AR').format(c.monto)}</td>
-                <td><select class="mini-select" id="reparto-borrador-${i}" onchange="actualizarCategoriasFilaBorrador(${i})"><option value="comun" selected>Común</option><option value="privado">Personal</option><option value="proporcional">Alquiler %</option></select></td>
-                <td><select class="mini-select" id="cat-borrador-${i}">${optCats}</select></td>
-                <td><select class="mini-select" id="pagador-borrador-${i}"><option value="damian" ${pDefecto === USUARIOS.DAMIAN ? 'selected' : ''}>Damián</option><option value="maxi" ${pDefecto === USUARIOS.MAXI ? 'selected' : ''}>Maxi</option></select></td>
-                <td><select class="mini-select" id="medio-borrador-${i}" onchange="actualizarPeriodoFilaBorrador(${i})">${optMedios}</select></td>
-                <td><input type="month" class="mini-input" id="periodo-borrador-${i}" value="${periodoSugerido}"></td>
-                <td><button class="btn-accion-rapida" onclick="confirmarGastoBorrador(${i}, this)">+ Agregar</button></td>`;
-            tbody.appendChild(tr);
-        });
+        renderizarBorradoresImportacion(consumos, medioImportacion);
     } catch (error) { alert("Error al leer la planilla."); } finally { btn.disabled = false; }
 });
 
+function renderizarBorradoresImportacion(consumos, medioImportacion) {
+    const tbody = document.getElementById('tabla-previa-ia-body'); tbody.innerHTML = "";
+    document.getElementById('contenedor-previa-ia').classList.remove('oculto');
 
+    let pDefecto = USUARIOS.DAMIAN;
+    if (medioImportacion.startsWith('tarjeta_')) {
+        const id = medioImportacion.replace('tarjeta_', '');
+        const tObj = listaTarjetasGlobal.find(t => t.id === id);
+        if (tObj) pDefecto = normalizarUsuarioId(tObj.titular) || USUARIOS.DAMIAN;
+    } else if (medioImportacion.startsWith('cuenta_')) {
+        const id = medioImportacion.replace('cuenta_', '');
+        const cObj = listaCuentasGlobal.find(c => c.id === id);
+        if (cObj) pDefecto = normalizarUsuarioId(cObj.titular) || USUARIOS.DAMIAN;
+    }
+
+    listaBorradoresImportacion = consumos;
+
+    let optCats = ''; categoriasPorTipo['comun'].forEach(cat => { optCats += `<option value="${escapeAttr(cat)}">${escapeHTML(cat)}</option>`; });
+    let optMedios = `<option value="efectivo">💵 Efectivo / Otra</option>`;
+    listaTarjetasGlobal.forEach(t => {
+        const selected = medioImportacion === `tarjeta_${t.id}` ? 'selected' : '';
+        optMedios += `<option value="tarjeta_${escapeAttr(t.id)}" ${selected}>💳 ${escapeHTML(t.marca)} - ${usuarioLabelSeguro(t.titular, true)}</option>`;
+    });
+    listaCuentasGlobal.forEach(c => {
+        const selected = medioImportacion === `cuenta_${c.id}` ? 'selected' : '';
+        optMedios += `<option value="cuenta_${escapeAttr(c.id)}" ${selected}>🏦 ${escapeHTML(c.banco)} - ${usuarioLabelSeguro(c.titular, true)}</option>`;
+    });
+
+    consumos.forEach((c, i) => {
+        const tr = document.createElement('tr');
+        const posibleDuplicado = esPosibleDuplicadoImportacion(c);
+        if (posibleDuplicado) tr.classList.add('fila-duplicado');
+        const avisoDuplicado = posibleDuplicado ? '<br><span class="badge-alerta">Posible duplicado</span>' : '';
+        const formatoInicial = medioImportacion.startsWith('tarjeta_') ? 'tarjeta' : (medioImportacion.startsWith('cuenta_') ? 'transferencia' : 'efectivo');
+        const periodoSugerido = obtenerPeriodoSugeridoParaGasto({ fechaValor: c.fechaObj?.toISOString().slice(0, 10), tipo: 'comun', formato: formatoInicial });
+        tr.innerHTML = `
+            <td>${escapeHTML(c.fecha)}</td><td><strong>${escapeHTML(c.concepto)}</strong>${avisoDuplicado}</td><td>$${new Intl.NumberFormat('es-AR').format(c.monto)}</td>
+            <td><select class="mini-select" id="reparto-borrador-${i}" onchange="actualizarCategoriasFilaBorrador(${i})"><option value="comun" selected>Común</option><option value="privado">Personal</option><option value="proporcional">Alquiler %</option></select></td>
+            <td><select class="mini-select" id="cat-borrador-${i}">${optCats}</select></td>
+            <td><select class="mini-select" id="pagador-borrador-${i}"><option value="damian" ${pDefecto === USUARIOS.DAMIAN ? 'selected' : ''}>Damián</option><option value="maxi" ${pDefecto === USUARIOS.MAXI ? 'selected' : ''}>Maxi</option></select></td>
+            <td><select class="mini-select" id="medio-borrador-${i}" onchange="actualizarPeriodoFilaBorrador(${i})">${optMedios}</select></td>
+            <td><input type="month" class="mini-input" id="periodo-borrador-${i}" value="${periodoSugerido}"></td>
+            <td><button class="btn-accion-rapida" onclick="confirmarGastoBorrador(${i}, this)">+ Agregar</button></td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+async function procesarCapturaGastos(file) {
+    if (!file || !window.Tesseract) {
+        alert('No se pudo iniciar el lector de capturas.');
+        return;
+    }
+    const zona = document.getElementById('zona-captura');
+    zona.querySelector('span').textContent = 'Leyendo captura...';
+    try {
+        const resultado = await window.Tesseract.recognize(file, 'spa+eng');
+        const consumos = extraerConsumosDesdeTextoOCR(resultado.data.text);
+        if (!consumos.length) {
+            alert('No pude detectar movimientos claros. Probá con una captura más nítida o importá el archivo del banco.');
+            return;
+        }
+        renderizarBorradoresImportacion(consumos, document.getElementById('archivo-medio-select').value);
+    } catch (error) {
+        alert('Error al leer la captura.');
+    } finally {
+        zona.querySelector('span').textContent = 'Copiá la imagen y pegala acá, o seleccioná una captura.';
+    }
+}
+
+document.getElementById('captura-input').addEventListener('change', (e) => procesarCapturaGastos(e.target.files[0]));
+document.getElementById('zona-captura').addEventListener('paste', (e) => {
+    const item = [...e.clipboardData.items].find(clip => clip.type.startsWith('image/'));
+    if (item) procesarCapturaGastos(item.getAsFile());
+});
 
 window.confirmarGastoBorrador = async function(index, boton) {
     try {
@@ -1277,6 +1358,7 @@ function obtenerLiquidezActual(userActivo, periodoActual) {
         traspasos: listaTraspasosGlobal,
         pagosTarjeta: listaPagosTarjetasGlobal,
         periodoActual,
+        periodoCaja: mesActualStr,
         userActivo,
         saldosBase: {
             efectivo: obtenerNumeroLimpio('saldo-base-efectivo'),
@@ -1385,6 +1467,7 @@ window.calcularDineroPersonalPrivado = function() {
         traspasos: listaTraspasosGlobal,
         pagosTarjeta: listaPagosTarjetasGlobal,
         periodoActual,
+        periodoCaja: mesActualStr,
         userActivo,
         saldosBase: {
             efectivo: obtenerNumeroLimpio('saldo-base-efectivo'),

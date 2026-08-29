@@ -168,6 +168,7 @@ export function calcularLiquidezPersonal({
     traspasos = [],
     pagosTarjeta = [],
     periodoActual,
+    periodoCaja = periodoActual,
     userActivo,
     saldosBase = {}
 }) {
@@ -187,7 +188,7 @@ export function calcularLiquidezPersonal({
         if (pagadorFinanciero !== normalizarUsuarioId(userActivo)) return;
 
         const mesRealGasto = fechaPeriodoKey(gasto.fecha);
-        if (mesRealGasto === periodoActual) {
+        if (mesRealGasto === periodoCaja) {
             if (gasto.formato === 'efectivo') {
                 egresosEfectivo += Number(gasto.monto || 0);
             } else if (gasto.formato === 'transferencia') {
@@ -208,14 +209,14 @@ export function calcularLiquidezPersonal({
     });
 
     cuotasPrestamo.forEach(cuota => {
-        if (fechaPeriodoKey(cuota.fecha) !== periodoActual) return;
+        if (fechaPeriodoKey(cuota.fecha) !== periodoCaja) return;
         if (cuota.cuentaDestino === 'efectivo') egresosEfectivo -= Number(cuota.monto || 0);
         else if (cuota.cuentaDestino === 'galicia') egresosGalicia -= Number(cuota.monto || 0);
         else if (cuota.cuentaDestino === 'mp') egresosMP -= Number(cuota.monto || 0);
     });
 
     traspasos.forEach(traspaso => {
-        if (fechaPeriodoKey(traspaso.fecha) !== periodoActual) return;
+        if (fechaPeriodoKey(traspaso.fecha) !== periodoCaja) return;
 
         if (traspaso.origen === 'efectivo') egresosEfectivo += Number(traspaso.monto || 0);
         else if (traspaso.origen === 'galicia') egresosGalicia += Number(traspaso.monto || 0);
@@ -229,7 +230,7 @@ export function calcularLiquidezPersonal({
     let totalPagadoPropia = 0;
     let totalPagadoExtension = 0;
     pagosTarjeta.forEach(pago => {
-        if (fechaPeriodoKey(pago.fecha) !== periodoActual) return;
+        if (fechaPeriodoKey(pago.fecha) !== periodoCaja) return;
 
         if (pago.cuentaLiquidadora === 'efectivo') egresosEfectivo += Number(pago.monto || 0);
         else if (pago.cuentaLiquidadora === 'galicia') egresosGalicia += Number(pago.monto || 0);
