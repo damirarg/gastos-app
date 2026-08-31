@@ -252,6 +252,11 @@ export function calcularLiquidezPersonal({
         let impacto = Number(ajuste.monto || 0);
         if (ajuste.tipo === 'compra_usd') impacto = -Math.abs(impacto);
         else if (ajuste.tipo === 'rendimiento_mp') impacto = Math.abs(impacto);
+        else if (ajuste.tipo === 'extraccion_galicia') {
+            egresosGalicia += Math.abs(impacto);
+            egresosEfectivo -= Math.abs(impacto);
+            return;
+        }
 
         if (ajuste.cuenta === 'efectivo') egresosEfectivo -= impacto;
         else if (ajuste.cuenta === 'mp') egresosMP -= impacto;

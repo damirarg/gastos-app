@@ -877,10 +877,11 @@ function renderizarAjustesCuenta() {
     contenedor.innerHTML = ajustes.map((ajuste) => {
         const fechaObj = ajuste.fecha ? ajuste.fecha.toDate ? ajuste.fecha.toDate() : new Date(ajuste.fecha) : new Date();
         const fecha = fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
-        const signo = ajuste.tipo === 'compra_usd' ? '-' : '+';
+        const signo = ajuste.tipo === 'compra_usd' ? '-' : (ajuste.tipo === 'extraccion_galicia' ? '↔' : '+');
+        const cuenta = ajuste.tipo === 'extraccion_galicia' ? 'Galicia → Efectivo' : (ajuste.cuenta || '');
         return `
             <div class="item-compacto">
-                <span>${fecha} · ${escapeHTML(describirTipoAjuste(ajuste.tipo))} · ${escapeHTML(ajuste.cuenta || '')}</span>
+                <span>${fecha} · ${escapeHTML(describirTipoAjuste(ajuste.tipo))} · ${escapeHTML(cuenta)}</span>
                 <div class="item-compacto-acciones">
                     <strong>${signo}$${new Intl.NumberFormat('es-AR').format(Math.abs(Number(ajuste.monto || 0)))}</strong>
                     <button type="button" class="btn-eliminar" title="Borrar ajuste" onclick="eliminarAjusteCuenta('${escapeAttr(ajuste.id)}')">🗑️</button>
@@ -902,6 +903,7 @@ window.eliminarAjusteCuenta = async function(id) {
 function describirTipoAjuste(tipo) {
     if (tipo === 'compra_usd') return 'Compra USD';
     if (tipo === 'rendimiento_mp') return 'Rendimiento MP';
+    if (tipo === 'extraccion_galicia') return 'Extracción';
     return 'Ajuste manual';
 }
 
@@ -1041,6 +1043,7 @@ document.getElementById('form-ajuste-cuenta').addEventListener('submit', async (
 document.getElementById('ajuste-tipo').addEventListener('change', (e) => {
     if (e.target.value === 'compra_usd') document.getElementById('ajuste-cuenta').value = 'galicia';
     if (e.target.value === 'rendimiento_mp') document.getElementById('ajuste-cuenta').value = 'mp';
+    if (e.target.value === 'extraccion_galicia') document.getElementById('ajuste-cuenta').value = 'galicia';
 });
 
 // LÓGICA DE PRÉSTAMOS
@@ -1696,6 +1699,17 @@ function obtenerImpactoAjuste(ajuste) {
     return monto;
 }
 
+function aplicarAjusteADisponibilidades(disponibilidades, ajuste) {
+    if (ajuste.tipo === 'extraccion_galicia') {
+        const monto = Math.abs(Number(ajuste.monto || 0));
+        aplicarImpactoCuenta(disponibilidades, 'galicia', -monto);
+        aplicarImpactoCuenta(disponibilidades, 'efectivo', monto);
+        return;
+    }
+
+    aplicarImpactoCuenta(disponibilidades, ajuste.cuenta, obtenerImpactoAjuste(ajuste));
+}
+
 function movimientoEsPrevioALaBase(movimiento, periodoBase) {
     const periodoMovimiento = periodoDesdeFechaMovimiento(movimiento.fecha);
     return periodoMovimiento && compararPeriodos(periodoMovimiento, periodoBase) < 0;
@@ -1747,7 +1761,7 @@ function aplicarMovimientosPropiosPreviosALaBase(liquidez, userActivo, periodoBa
         if (!movimientoEsPrevioALaBase(ajuste, periodoBase)) return;
         if (!fueCreadoDespuesDelSaldoBase(ajuste, saldosGuardados)) return;
 
-        aplicarImpactoCuenta(liquidez.disponibilidades, ajuste.cuenta, obtenerImpactoAjuste(ajuste));
+        aplicarAjusteADisponibilidades(liquidez.disponibilidades, ajuste);
     });
 }
 
