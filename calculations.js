@@ -211,6 +211,8 @@ export function calcularLiquidezPersonal({
 
     cuotasPrestamo.forEach(cuota => {
         if (fechaPeriodoKey(cuota.fecha) !== periodoCaja) return;
+        if (cuota.owner && normalizarUsuarioId(cuota.owner) !== normalizarUsuarioId(userActivo)) return;
+
         if (cuota.cuentaDestino === 'efectivo') egresosEfectivo -= Number(cuota.monto || 0);
         else if (cuota.cuentaDestino === 'galicia') egresosGalicia -= Number(cuota.monto || 0);
         else if (cuota.cuentaDestino === 'mp') egresosMP -= Number(cuota.monto || 0);
@@ -233,6 +235,7 @@ export function calcularLiquidezPersonal({
     let totalPagadoExtension = 0;
     pagosTarjeta.forEach(pago => {
         if (fechaPeriodoKey(pago.fecha) !== periodoCaja) return;
+        if (pago.owner && normalizarUsuarioId(pago.owner) !== normalizarUsuarioId(userActivo)) return;
 
         if (pago.cuentaLiquidadora === 'efectivo') egresosEfectivo += Number(pago.monto || 0);
         else if (pago.cuentaLiquidadora === 'galicia') egresosGalicia += Number(pago.monto || 0);

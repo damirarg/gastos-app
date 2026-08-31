@@ -972,7 +972,8 @@ document.getElementById('form-traspaso-cuentas').addEventListener('submit', asyn
             fecha: fecha, origen: origen, destino: destino, monto: monto,
             owner: usuarioActivoId,
             periodo: filtroMesInput.value,
-            usuarioCreador: auth.currentUser.email
+            usuarioCreador: auth.currentUser.email,
+            createdAt: new Date()
         });
         document.getElementById('form-traspaso-cuentas').reset();
         document.getElementById('traspaso-fecha').value = new Date().toISOString().split('T')[0];
@@ -993,7 +994,10 @@ document.getElementById('form-pago-tarjeta').addEventListener('submit', async (e
     try {
         await addDoc(collection(db, "pagos_tarjeta"), {
             fecha: fecha, tarjetaTipo: tarjetaTipo, cuentaLiquidadora: cuentaLiquidadora, monto: monto,
-            periodo: filtroMesInput.value, usuarioCreador: auth.currentUser.email
+            owner: usuarioActivoId,
+            periodo: filtroMesInput.value,
+            usuarioCreador: auth.currentUser.email,
+            createdAt: new Date()
         });
         document.getElementById('form-pago-tarjeta').reset();
         document.getElementById('pago-tarjeta-fecha').value = new Date().toISOString().split('T')[0];
@@ -1024,7 +1028,8 @@ document.getElementById('form-ajuste-cuenta').addEventListener('submit', async (
             nota,
             fecha,
             owner: usuarioActivoId,
-            usuarioCreador: auth.currentUser.email
+            usuarioCreador: auth.currentUser.email,
+            createdAt: new Date()
         });
         document.getElementById('form-ajuste-cuenta').reset();
         document.getElementById('ajuste-fecha').value = new Date().toISOString().split('T')[0];
@@ -1112,7 +1117,9 @@ document.getElementById('form-pago-prestamo').addEventListener('submit', async (
         await addDoc(collection(db, "cuotas_prestamo"), {
             monto: montoCuota, fecha: fechaCuota, cuentaDestino: cuentaDestino,
             motivo: "Cuota préstamo auto Maxi", usuarioCreador: auth.currentUser.email,
-            periodo: filtroMesInput.value
+            owner: usuarioActivoId,
+            periodo: filtroMesInput.value,
+            createdAt: new Date()
         });
         document.getElementById('form-pago-prestamo').reset();
         document.getElementById('cuota-fecha').value = new Date().toISOString().split('T')[0];
@@ -1157,7 +1164,9 @@ document.getElementById('form-saldar-deuda').addEventListener('submit', async (e
         await addDoc(collection(db, "gastos"), {
             concepto: "Liquidación de saldos del mes", monto: montoLimpio, categoria: "Liquidación",
             pagadoPor: normalizarUsuarioId(window.estadoDeudaActual.deudor), tipoReparto: "devolucion", formato: medio,
-            medioId: "", usuarioCreador: auth.currentUser.email, fecha: fechaIngresada, periodo: periodoActual
+            medioId: "", usuarioCreador: auth.currentUser.email, fecha: fechaIngresada, periodo: periodoActual,
+            owner: normalizarUsuarioId(window.estadoDeudaActual.deudor),
+            createdAt: new Date()
         });
         document.getElementById('form-saldar-deuda').reset();
         document.getElementById('contenedor-saldar-deuda').classList.add('oculto');
@@ -1327,7 +1336,8 @@ document.getElementById('form-gasto').addEventListener('submit', async (e) => {
             formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email,
             owner: tipoReparto === 'privado' ? usuarioActivoId : 'hogar',
             esPrivado: tipoReparto === 'privado',
-            fecha: fechaGasto, periodo: periodoImputacion
+            fecha: fechaGasto, periodo: periodoImputacion,
+            createdAt: new Date()
         });
         document.getElementById('form-gasto').reset();
         fechaManualInput.value = new Date().toISOString().split('T')[0];
@@ -1450,7 +1460,8 @@ window.confirmarGastoBorrador = async function(index, boton) {
             formato: formato, medioId: medioId, usuarioCreador: auth.currentUser.email, fecha: borrador.fechaObj || new Date(),
             owner: tipoReparto === 'privado' ? pagadoPor : 'hogar',
             esPrivado: tipoReparto === 'privado',
-            periodo: document.getElementById(`periodo-borrador-${index}`).value || filtroMesInput.value
+            periodo: document.getElementById(`periodo-borrador-${index}`).value || filtroMesInput.value,
+            createdAt: new Date()
         });
         boton.parentElement.innerHTML = `<span style="color: var(--success-color); font-weight: bold;">✓ Agregado</span>`;
     } catch (error) { alert("Error al confirmar."); }
@@ -1574,7 +1585,9 @@ function obtenerSaldosGlobalesUsuario(userActivo) {
         efectivo: Number(saldosUsuario.efectivo || 0),
         galicia: Number(saldosUsuario.galicia || 0),
         mp: Number(saldosUsuario.mp || 0),
-        periodoBase: saldosUsuario.periodoBase || mesActualStr
+        periodoBase: saldosUsuario.periodoBase || mesActualStr,
+        actualizadoEn: saldosUsuario.actualizadoEn || null,
+        esGlobal: true
     };
 }
 
@@ -1586,7 +1599,9 @@ function obtenerUltimosSaldosMensualesLegacy() {
     if (!periodoBase) return null;
     return {
         ...obtenerSaldosBaseDesdeDoc(ingresosPorMesGlobal[periodoBase]),
-        periodoBase
+        periodoBase,
+        actualizadoEn: null,
+        esGlobal: false
     };
 }
 
@@ -1646,17 +1661,93 @@ function aplicarTraspasoADisponibilidades(disponibilidades, traspaso) {
     disponibilidades.total = disponibilidades.efectivo + disponibilidades.galicia + disponibilidades.mp;
 }
 
-function aplicarTraspasosPropiosPreviosALaBase(liquidez, userActivo, periodoBase) {
+function fechaMovimientoMs(fecha) {
+    if (!fecha) return null;
+    const fechaObj = fecha.toDate ? fecha.toDate() : new Date(fecha);
+    const ms = fechaObj.getTime();
+    return Number.isFinite(ms) ? ms : null;
+}
+
+function fueCreadoDespuesDelSaldoBase(movimiento, saldosGuardados) {
+    if (!saldosGuardados?.esGlobal) return true;
+    const baseMs = fechaMovimientoMs(saldosGuardados.actualizadoEn);
+    const creadoMs = fechaMovimientoMs(movimiento.createdAt);
+    if (!baseMs || !creadoMs) return false;
+    return creadoMs >= baseMs;
+}
+
+function aplicarImpactoCuenta(disponibilidades, cuenta, impacto) {
+    if (cuenta === 'efectivo') disponibilidades.efectivo += impacto;
+    else if (cuenta === 'mp') disponibilidades.mp += impacto;
+    else disponibilidades.galicia += impacto;
+
+    disponibilidades.total = disponibilidades.efectivo + disponibilidades.galicia + disponibilidades.mp;
+}
+
+function cuentaDesdeGastoTransferencia(gasto) {
+    const cuenta = listaCuentasGlobal.find(c => c.id === gasto.medioId);
+    return cuenta && cuenta.banco.toLowerCase().includes('mercado') ? 'mp' : 'galicia';
+}
+
+function obtenerImpactoAjuste(ajuste) {
+    const monto = Number(ajuste.monto || 0);
+    if (ajuste.tipo === 'compra_usd') return -Math.abs(monto);
+    if (ajuste.tipo === 'rendimiento_mp') return Math.abs(monto);
+    return monto;
+}
+
+function movimientoEsPrevioALaBase(movimiento, periodoBase) {
+    const periodoMovimiento = periodoDesdeFechaMovimiento(movimiento.fecha);
+    return periodoMovimiento && compararPeriodos(periodoMovimiento, periodoBase) < 0;
+}
+
+function aplicarMovimientosPropiosPreviosALaBase(liquidez, userActivo, periodoBase, saldosGuardados) {
     if (!liquidez || !periodoBase) return;
+    const userNormalizado = normalizarUsuarioId(userActivo);
+
+    listaGastosCompletaBase.forEach((gasto) => {
+        if (!movimientoEsPrevioALaBase(gasto, periodoBase)) return;
+        if (!gasto.createdAt) return;
+        if (!fueCreadoDespuesDelSaldoBase(gasto, saldosGuardados)) return;
+
+        const pagadorFinanciero = obtenerPagadorFinanciero(gasto, listaTarjetasGlobal);
+        if (pagadorFinanciero !== userNormalizado) return;
+        if (gasto.formato === 'efectivo') aplicarImpactoCuenta(liquidez.disponibilidades, 'efectivo', -Number(gasto.monto || 0));
+        else if (gasto.formato === 'transferencia') aplicarImpactoCuenta(liquidez.disponibilidades, cuentaDesdeGastoTransferencia(gasto), -Number(gasto.monto || 0));
+    });
+
+    listaCuotasPrestamoGlobal.forEach((cuota) => {
+        if (cuota.owner && normalizarUsuarioId(cuota.owner) !== userNormalizado) return;
+        if (!movimientoEsPrevioALaBase(cuota, periodoBase)) return;
+        if (!cuota.createdAt) return;
+        if (!fueCreadoDespuesDelSaldoBase(cuota, saldosGuardados)) return;
+
+        aplicarImpactoCuenta(liquidez.disponibilidades, cuota.cuentaDestino, Number(cuota.monto || 0));
+    });
 
     listaTraspasosGlobal.forEach((traspaso) => {
-        if (!traspaso.owner) return;
         if (!traspasoPerteneceAUsuario(traspaso, userActivo)) return;
-
-        const periodoTraspaso = periodoDesdeFechaMovimiento(traspaso.fecha);
-        if (!periodoTraspaso || compararPeriodos(periodoTraspaso, periodoBase) >= 0) return;
+        if (!movimientoEsPrevioALaBase(traspaso, periodoBase)) return;
+        if (!fueCreadoDespuesDelSaldoBase(traspaso, saldosGuardados)) return;
 
         aplicarTraspasoADisponibilidades(liquidez.disponibilidades, traspaso);
+    });
+
+    listaPagosTarjetasGlobal.forEach((pago) => {
+        if (pago.owner && normalizarUsuarioId(pago.owner) !== userNormalizado) return;
+        if (!movimientoEsPrevioALaBase(pago, periodoBase)) return;
+        if (!pago.createdAt) return;
+        if (!fueCreadoDespuesDelSaldoBase(pago, saldosGuardados)) return;
+
+        aplicarImpactoCuenta(liquidez.disponibilidades, pago.cuentaLiquidadora, -Number(pago.monto || 0));
+    });
+
+    listaAjustesCuentaGlobal.forEach((ajuste) => {
+        if (normalizarUsuarioId(ajuste.owner) !== userNormalizado) return;
+        if (!movimientoEsPrevioALaBase(ajuste, periodoBase)) return;
+        if (!fueCreadoDespuesDelSaldoBase(ajuste, saldosGuardados)) return;
+
+        aplicarImpactoCuenta(liquidez.disponibilidades, ajuste.cuenta, obtenerImpactoAjuste(ajuste));
     });
 }
 
@@ -1710,7 +1801,7 @@ function obtenerLiquidezGlobal(userActivo) {
     const periodoBase = saldosGuardados?.periodoBase || mesActualStr;
     const periodoSaldoGlobal = obtenerPeriodoSaldoGlobal(userActivo, periodoBase);
     const resultado = calcularLiquidezEncadenada(userActivo, periodoSaldoGlobal);
-    aplicarTraspasosPropiosPreviosALaBase(resultado.liquidez, userActivo, resultado.periodoBase);
+    aplicarMovimientosPropiosPreviosALaBase(resultado.liquidez, userActivo, resultado.periodoBase, saldosGuardados);
     return resultado;
 }
 
