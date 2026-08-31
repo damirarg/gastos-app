@@ -218,6 +218,7 @@ export function calcularLiquidezPersonal({
 
     traspasos.forEach(traspaso => {
         if (fechaPeriodoKey(traspaso.fecha) !== periodoCaja) return;
+        if (traspaso.owner && normalizarUsuarioId(traspaso.owner) !== normalizarUsuarioId(userActivo)) return;
 
         if (traspaso.origen === 'efectivo') egresosEfectivo += Number(traspaso.monto || 0);
         else if (traspaso.origen === 'galicia') egresosGalicia += Number(traspaso.monto || 0);

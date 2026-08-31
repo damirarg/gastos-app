@@ -834,6 +834,7 @@ function escucharTraspasosYPagosTarjetas() {
             const t = docSnap.data(); t.id = docSnap.id;
             listaTraspasosGlobal.push(t);
         });
+        renderizarTraspasosCuenta();
         if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
     }));
 
@@ -904,6 +905,55 @@ function describirTipoAjuste(tipo) {
     return 'Ajuste manual';
 }
 
+function traspasoPerteneceAUsuario(traspaso, userActivo) {
+    return !traspaso.owner || normalizarUsuarioId(traspaso.owner) === normalizarUsuarioId(userActivo);
+}
+
+function nombreCuentaFija(cuenta) {
+    if (cuenta === 'efectivo') return 'Efectivo';
+    if (cuenta === 'mp') return 'Mercado Pago';
+    return 'Banco Galicia';
+}
+
+function renderizarTraspasosCuenta() {
+    const contenedor = document.getElementById('lista-traspasos-cuenta');
+    if (!contenedor || !auth.currentUser) return;
+
+    const userActivo = obtenerNombreUsuario(auth.currentUser.email);
+    const traspasos = listaTraspasosGlobal
+        .filter(traspaso => traspasoPerteneceAUsuario(traspaso, userActivo))
+        .slice(0, 8);
+
+    if (!traspasos.length) {
+        contenedor.innerHTML = '<p class="balance-subtext">No hay traspasos registrados.</p>';
+        return;
+    }
+
+    contenedor.innerHTML = traspasos.map((traspaso) => {
+        const fecha = traspaso.fecha?.toDate
+            ? traspaso.fecha.toDate().toLocaleDateString('es-AR')
+            : new Date(traspaso.fecha).toLocaleDateString('es-AR');
+        return `
+            <div class="item-compacto">
+                <span>${fecha} · ${escapeHTML(nombreCuentaFija(traspaso.origen))} → ${escapeHTML(nombreCuentaFija(traspaso.destino))}</span>
+                <div class="item-compacto-acciones">
+                    <strong>$${new Intl.NumberFormat('es-AR').format(Number(traspaso.monto || 0))}</strong>
+                    <button type="button" class="btn-eliminar" title="Borrar traspaso" onclick="eliminarTraspasoCuenta('${escapeAttr(traspaso.id)}')">🗑️</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+window.eliminarTraspasoCuenta = async function(id) {
+    if (!confirm("¿Borrar este traspaso entre cuentas?")) return;
+    try {
+        await deleteDoc(doc(db, "traspasos_cuentas", id));
+    } catch (error) {
+        alert("Error al borrar el traspaso.");
+    }
+};
+
 document.getElementById('form-traspaso-cuentas').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fecha = new Date(document.getElementById('traspaso-fecha').value + "T12:00:00");
@@ -920,10 +970,13 @@ document.getElementById('form-traspaso-cuentas').addEventListener('submit', asyn
     try {
         await addDoc(collection(db, "traspasos_cuentas"), {
             fecha: fecha, origen: origen, destino: destino, monto: monto,
-            periodo: filtroMesInput.value, usuarioCreador: auth.currentUser.email
+            owner: usuarioActivoId,
+            periodo: filtroMesInput.value,
+            usuarioCreador: auth.currentUser.email
         });
         document.getElementById('form-traspaso-cuentas').reset();
         document.getElementById('traspaso-fecha').value = new Date().toISOString().split('T')[0];
+        if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
         alert("Traspaso entre cuentas registrado correctamente.");
     } catch (error) { alert("Error al registrar el traspaso."); }
 });
@@ -1559,6 +1612,7 @@ function obtenerPeriodoSaldoGlobal(userActivo, periodoBase) {
     });
 
     listaTraspasosGlobal.forEach((traspaso) => {
+        if (!traspasoPerteneceAUsuario(traspaso, userActivo)) return;
         const periodo = periodoDesdeFechaMovimiento(traspaso.fecha);
         if (periodo) periodos.push(periodo);
     });
