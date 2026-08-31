@@ -73,11 +73,32 @@
             </section>
 
             <section class="card" style="padding: 16px 24px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;">
+                    <h2 style="font-size: 18px; margin: 0;">Saldos globales de cuentas</h2>
+                    <button type="button" class="btn-secundario btn-opciones" style="width: auto; padding: 8px 16px; font-size: 13px;" onclick="document.getElementById('panel-saldos-base').classList.toggle('oculto')">Ajustar saldos</button>
+                </div>
                 <div class="grid-4" style="align-items: end; margin-bottom: 0;">
                     <div class="metric-card"><label>Efectivo Disponible</label><div class="metric-val" id="global-disp-efectivo" style="font-size: 18px;">$0</div></div>
                     <div class="metric-card"><label>Galicia Disponible</label><div class="metric-val" id="global-disp-galicia" style="font-size: 18px;">$0</div></div>
                     <div class="metric-card"><label>Mercado Pago Disp.</label><div class="metric-val" id="global-disp-mp" style="font-size: 18px;">$0</div></div>
                     <div class="metric-card" style="border-color: var(--success-color); background: #f4faf6;"><label style="color: var(--success-color); font-weight: 600;">LIQUIDEZ TOTAL REAL</label><div class="metric-val" id="global-disp-total-liquidez" style="color: var(--success-color);">$0</div></div>
+                </div>
+                <div id="panel-saldos-base" class="panel-simple oculto" style="margin-top: 16px; margin-bottom: 0;">
+                    <div class="grid-3" style="margin-bottom: 16px;">
+                        <div class="form-group">
+                            <label for="saldo-base-efectivo">💵 Saldo Global Efectivo ($)</label>
+                            <input type="text" id="saldo-base-efectivo" class="monto-input" placeholder="Ej: 50.000 o -20.000">
+                        </div>
+                        <div class="form-group">
+                            <label for="saldo-base-galicia">🏦 Saldo Global Banco Galicia ($)</label>
+                            <input type="text" id="saldo-base-galicia" class="monto-input" placeholder="Ej: 1.500.000 o -100.000">
+                        </div>
+                        <div class="form-group">
+                            <label for="saldo-base-mp">📱 Saldo Global Mercado Pago ($)</label>
+                            <input type="text" id="saldo-base-mp" class="monto-input" placeholder="Ej: 800.000 o -50.000">
+                        </div>
+                    </div>
+                    <button id="btn-guardar-saldos-base" class="btn-secundario">💾 Guardar Saldos Globales</button>
                 </div>
             </section>
 
@@ -261,25 +282,6 @@
                 <section id="seccion-privada-personal" class="card card-privada">
                     <h2>🔒 Control de Liquidez y Cuentas Personales (<span id="nombre-privado-titular">Usuario</span>)</h2>
                     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Los saldos de efectivo, Galicia y Mercado Pago son globales y se actualizan con movimientos reales aunque cambies de mes.</p>
-
-                    <button type="button" class="btn-secundario btn-opciones" onclick="document.getElementById('panel-saldos-base').classList.toggle('oculto')">Ajustar saldos globales</button>
-                    <div id="panel-saldos-base" class="panel-simple oculto">
-                        <div class="grid-3" style="margin-bottom: 16px;">
-                            <div class="form-group">
-                                <label for="saldo-base-efectivo">💵 Saldo Global Efectivo ($)</label>
-                                <input type="text" id="saldo-base-efectivo" class="monto-input" placeholder="Ej: 50.000 o -20.000">
-                            </div>
-                            <div class="form-group">
-                                <label for="saldo-base-galicia">🏦 Saldo Global Banco Galicia ($)</label>
-                                <input type="text" id="saldo-base-galicia" class="monto-input" placeholder="Ej: 1.500.000 o -100.000">
-                            </div>
-                            <div class="form-group">
-                                <label for="saldo-base-mp">📱 Saldo Global Mercado Pago ($)</label>
-                                <input type="text" id="saldo-base-mp" class="monto-input" placeholder="Ej: 800.000 o -50.000">
-                            </div>
-                        </div>
-                        <button id="btn-guardar-saldos-base" class="btn-secundario">💾 Guardar Saldos Globales</button>
-                    </div>
 
                     <!-- CUADROS DE DISPONIBILIDAD EN TIEMPO REAL -->
                     <div class="grid-4" style="align-items: end; margin-bottom: 20px;">

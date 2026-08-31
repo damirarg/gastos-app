@@ -1631,6 +1631,35 @@ function obtenerPeriodoSaldoGlobal(userActivo, periodoBase) {
     return periodos.sort()[periodos.length - 1] || mesActualStr;
 }
 
+function aplicarTraspasoADisponibilidades(disponibilidades, traspaso) {
+    const monto = Number(traspaso.monto || 0);
+    if (!monto) return;
+
+    if (traspaso.origen === 'efectivo') disponibilidades.efectivo -= monto;
+    else if (traspaso.origen === 'galicia') disponibilidades.galicia -= monto;
+    else if (traspaso.origen === 'mp') disponibilidades.mp -= monto;
+
+    if (traspaso.destino === 'efectivo') disponibilidades.efectivo += monto;
+    else if (traspaso.destino === 'galicia') disponibilidades.galicia += monto;
+    else if (traspaso.destino === 'mp') disponibilidades.mp += monto;
+
+    disponibilidades.total = disponibilidades.efectivo + disponibilidades.galicia + disponibilidades.mp;
+}
+
+function aplicarTraspasosPropiosPreviosALaBase(liquidez, userActivo, periodoBase) {
+    if (!liquidez || !periodoBase) return;
+
+    listaTraspasosGlobal.forEach((traspaso) => {
+        if (!traspaso.owner) return;
+        if (!traspasoPerteneceAUsuario(traspaso, userActivo)) return;
+
+        const periodoTraspaso = periodoDesdeFechaMovimiento(traspaso.fecha);
+        if (!periodoTraspaso || compararPeriodos(periodoTraspaso, periodoBase) >= 0) return;
+
+        aplicarTraspasoADisponibilidades(liquidez.disponibilidades, traspaso);
+    });
+}
+
 function calcularLiquidezEncadenada(userActivo, periodoDestino) {
     const saldosGuardados = obtenerSaldosGlobalesUsuario(userActivo) || obtenerUltimosSaldosMensualesLegacy();
     const periodoBase = saldosGuardados?.periodoBase || periodoDestino;
@@ -1680,7 +1709,9 @@ function obtenerLiquidezGlobal(userActivo) {
     const saldosGuardados = obtenerSaldosGlobalesUsuario(userActivo) || obtenerUltimosSaldosMensualesLegacy();
     const periodoBase = saldosGuardados?.periodoBase || mesActualStr;
     const periodoSaldoGlobal = obtenerPeriodoSaldoGlobal(userActivo, periodoBase);
-    return calcularLiquidezEncadenada(userActivo, periodoSaldoGlobal);
+    const resultado = calcularLiquidezEncadenada(userActivo, periodoSaldoGlobal);
+    aplicarTraspasosPropiosPreviosALaBase(resultado.liquidez, userActivo, resultado.periodoBase);
+    return resultado;
 }
 
 function obtenerLiquidezActual(userActivo, periodoActual) {
