@@ -7,7 +7,8 @@ import {
     inicializarInputsMonto,
     calcularTotalesPrestamo,
     calcularBalanceNeteado,
-    calcularLiquidezPersonal
+    calcularLiquidezPersonal,
+    obtenerPagadorFinanciero
 } from "./calculations.js";
 import { procesarExcelOCSV } from "./importer.js";
 import { escapeHTML, escapeAttr, normalizarTextoComparacion, fechaLocalKey, formatearFechaCSV, valorCSV, aplicarColorMonto } from "./render.js";
@@ -1483,13 +1484,6 @@ function mesSiguiente(periodo) {
     return fecha.toISOString().slice(0, 7);
 }
 
-function mesAnterior(periodo) {
-    const [anio, mes] = periodo.split('-').map(Number);
-    if (!anio || !mes) return mesActualStr;
-    const fecha = new Date(anio, mes - 2, 1);
-    return fecha.toISOString().slice(0, 7);
-}
-
 function compararPeriodos(a, b) {
     return a.localeCompare(b);
 }
@@ -1531,9 +1525,8 @@ function obtenerSaldosGlobalesUsuario(userActivo) {
     };
 }
 
-function obtenerUltimosSaldosMensualesLegacy(periodoDestino) {
+function obtenerUltimosSaldosMensualesLegacy() {
     const periodosConBase = Object.keys(ingresosPorMesGlobal)
-        .filter(periodo => compararPeriodos(periodo, periodoDestino) <= 0)
         .filter(periodo => tieneSaldosBase(ingresosPorMesGlobal[periodo]))
         .sort();
     const periodoBase = periodosConBase[periodosConBase.length - 1];
@@ -1544,8 +1537,48 @@ function obtenerUltimosSaldosMensualesLegacy(periodoDestino) {
     };
 }
 
+function periodoDesdeFechaMovimiento(fecha) {
+    const key = fechaLocalKey(fecha);
+    return key ? key.slice(0, 7) : '';
+}
+
+function obtenerPeriodoSaldoGlobal(userActivo, periodoBase) {
+    const periodos = [mesActualStr, periodoBase].filter(Boolean);
+
+    listaGastosCompletaBase.forEach((gasto) => {
+        const pagadorFinanciero = obtenerPagadorFinanciero(gasto, listaTarjetasGlobal);
+        if (pagadorFinanciero !== normalizarUsuarioId(userActivo)) return;
+        if (gasto.formato !== 'efectivo' && gasto.formato !== 'transferencia') return;
+        const periodo = periodoDesdeFechaMovimiento(gasto.fecha);
+        if (periodo) periodos.push(periodo);
+    });
+
+    listaCuotasPrestamoGlobal.forEach((cuota) => {
+        const periodo = periodoDesdeFechaMovimiento(cuota.fecha);
+        if (periodo) periodos.push(periodo);
+    });
+
+    listaTraspasosGlobal.forEach((traspaso) => {
+        const periodo = periodoDesdeFechaMovimiento(traspaso.fecha);
+        if (periodo) periodos.push(periodo);
+    });
+
+    listaPagosTarjetasGlobal.forEach((pago) => {
+        const periodo = periodoDesdeFechaMovimiento(pago.fecha);
+        if (periodo) periodos.push(periodo);
+    });
+
+    listaAjustesCuentaGlobal.forEach((ajuste) => {
+        if (normalizarUsuarioId(ajuste.owner) !== normalizarUsuarioId(userActivo)) return;
+        const periodo = periodoDesdeFechaMovimiento(ajuste.fecha);
+        if (periodo) periodos.push(periodo);
+    });
+
+    return periodos.sort()[periodos.length - 1] || mesActualStr;
+}
+
 function calcularLiquidezEncadenada(userActivo, periodoDestino) {
-    const saldosGuardados = obtenerSaldosGlobalesUsuario(userActivo) || obtenerUltimosSaldosMensualesLegacy(periodoDestino);
+    const saldosGuardados = obtenerSaldosGlobalesUsuario(userActivo) || obtenerUltimosSaldosMensualesLegacy();
     const periodoBase = saldosGuardados?.periodoBase || periodoDestino;
     let saldos = saldosGuardados
         ? {
@@ -1584,8 +1617,16 @@ function calcularLiquidezEncadenada(userActivo, periodoDestino) {
     return {
         liquidez,
         periodoBase,
+        periodoDestino,
         saldoMesAnterior: periodoDestino === periodoBase ? saldos : null
     };
+}
+
+function obtenerLiquidezGlobal(userActivo) {
+    const saldosGuardados = obtenerSaldosGlobalesUsuario(userActivo) || obtenerUltimosSaldosMensualesLegacy();
+    const periodoBase = saldosGuardados?.periodoBase || mesActualStr;
+    const periodoSaldoGlobal = obtenerPeriodoSaldoGlobal(userActivo, periodoBase);
+    return calcularLiquidezEncadenada(userActivo, periodoSaldoGlobal);
 }
 
 function obtenerLiquidezActual(userActivo, periodoActual) {
@@ -1597,7 +1638,7 @@ function actualizarProyeccion() {
     const periodoActual = filtroMesInput.value;
     const periodoProyectado = mesSiguiente(periodoActual);
     const userActivo = obtenerNombreUsuario(auth.currentUser.email);
-    const liquidezActual = obtenerLiquidezActual(userActivo, periodoActual);
+    const liquidezActual = obtenerLiquidezGlobal(userActivo).liquidez;
     const liquidezProyectada = obtenerLiquidezActual(userActivo, periodoProyectado);
     const ingresoEsperado = obtenerNumeroLimpio('proy-ingreso');
     const otrosFijos = obtenerNumeroLimpio('proy-fijos');
@@ -1682,37 +1723,33 @@ function actualizarGraficosDashboard() {
 window.calcularDineroPersonalPrivado = function() {
     if (!auth.currentUser) return;
     const userActivo = obtenerNombreUsuario(auth.currentUser.email);
-    const periodoActual = filtroMesInput.value;
-    const resultadoEncadenado = calcularLiquidezEncadenada(userActivo, periodoActual);
+    const resultadoEncadenado = obtenerLiquidezGlobal(userActivo);
     const liquidez = resultadoEncadenado.liquidez;
     if (!liquidez) return;
 
-    const elDispEfectivo = document.getElementById('disp-efectivo');
-    const elDispGalicia = document.getElementById('disp-galicia');
-    const elDispMP = document.getElementById('disp-mp');
-    const elDispTotal = document.getElementById('disp-total-liquidez');
-
-    elDispEfectivo.textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.disponibilidades.efectivo);
-    elDispGalicia.textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.disponibilidades.galicia);
-    elDispMP.textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.disponibilidades.mp);
-    elDispTotal.textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.disponibilidades.total);
-    aplicarColorMonto(elDispEfectivo, liquidez.disponibilidades.efectivo);
-    aplicarColorMonto(elDispGalicia, liquidez.disponibilidades.galicia);
-    aplicarColorMonto(elDispMP, liquidez.disponibilidades.mp);
-    aplicarColorMonto(elDispTotal, liquidez.disponibilidades.total);
+    actualizarMontoEnElementos(['disp-efectivo', 'global-disp-efectivo'], liquidez.disponibilidades.efectivo);
+    actualizarMontoEnElementos(['disp-galicia', 'global-disp-galicia'], liquidez.disponibilidades.galicia);
+    actualizarMontoEnElementos(['disp-mp', 'global-disp-mp'], liquidez.disponibilidades.mp);
+    actualizarMontoEnElementos(['disp-total-liquidez', 'global-disp-total-liquidez'], liquidez.disponibilidades.total);
 
     document.getElementById('credito-propio').textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.tarjetas.propia);
     document.getElementById('credito-extension').textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.tarjetas.extension);
     document.getElementById('credito-total-tarjetas').textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.tarjetas.total);
     const detalleArrastre = document.getElementById('detalle-arrastre-saldo');
     if (detalleArrastre) {
-        const periodoPrevio = mesAnterior(periodoActual);
         const origenGlobal = obtenerSaldosGlobalesUsuario(userActivo) ? 'global' : 'mensual anterior';
-        detalleArrastre.textContent = resultadoEncadenado.periodoBase === periodoActual
-            ? `Saldo ${origenGlobal} calculado desde ${periodoActual}.`
-            : `Saldo ${origenGlobal} arrastrado desde ${resultadoEncadenado.periodoBase}; incluye el cierre de ${periodoPrevio} y los movimientos reales de ${periodoActual}.`;
+        detalleArrastre.textContent = `Saldo ${origenGlobal} único; no cambia por el período en pantalla. Calculado desde ${resultadoEncadenado.periodoBase} hasta ${resultadoEncadenado.periodoDestino}.`;
     }
     actualizarProyeccion();
 };
+
+function actualizarMontoEnElementos(ids, monto) {
+    ids.forEach((id) => {
+        const elemento = document.getElementById(id);
+        if (!elemento) return;
+        elemento.textContent = "$" + new Intl.NumberFormat('es-AR').format(monto);
+        aplicarColorMonto(elemento, monto);
+    });
+}
 
 inicializarInputsMonto();
