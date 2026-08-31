@@ -11,7 +11,7 @@ import {
 } from "./calculations.js";
 import { procesarExcelOCSV } from "./importer.js";
 import { escapeHTML, escapeAttr, normalizarTextoComparacion, fechaLocalKey, formatearFechaCSV, valorCSV, aplicarColorMonto } from "./render.js";
-import { USUARIOS, normalizarUsuarioId, usuarioEsDamian, usuarioNombre, usuarioCorto } from "./users.js";
+import { USUARIOS, normalizarUsuarioId, usuarioNombre, usuarioCorto } from "./users.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAppvZkCIXB4LLTBMIipFcRR6T_sJyQ1PA",
@@ -186,6 +186,7 @@ let listaTraspasosGlobal = [];
 let listaPagosTarjetasGlobal = [];
 let listaAjustesCuentaGlobal = [];
 let ingresosPorMesGlobal = {};
+let saldosCuentasGlobales = {};
 let listaBorradoresImportacion = [];
 const suscripcionesTiempoReal = {
     gastos: null,
@@ -196,7 +197,8 @@ const suscripcionesTiempoReal = {
     traspasos: null,
     pagosTarjeta: null,
     ajustesCuenta: null,
-    ingresos: null
+    ingresos: null,
+    saldosCuentas: null
 };
 let idGastoEnEdicionPeriodo = null;
 let esEdicionMasiva = false;
@@ -240,6 +242,7 @@ onAuthStateChanged(auth, (user) => {
         escucharTarjetasYcuentas();
         escucharGastosEnTiempoReal();
         escucharIngresosYSaldos();
+        escucharSaldosCuentasGlobales();
         escucharPrestamoYcuotas();
         escucharTraspasosYPagosTarjetas();
     } else {
@@ -743,36 +746,45 @@ function escucharIngresosYSaldos() {
     }));
 }
 
+function escucharSaldosCuentasGlobales() {
+    reemplazarSuscripcion('saldosCuentas', onSnapshot(doc(db, "configuracion", "saldos_cuentas_globales"), (docSnap) => {
+        saldosCuentasGlobales = docSnap.exists() ? docSnap.data() : {};
+        cargarIngresosYsaldoDelMes();
+    }));
+}
+
 window.eliminarMedio = async function(coleccion, id) {
     if (confirm("¿Borrar este medio de pago?")) { await deleteDoc(doc(db, coleccion, id)); }
 };
 
-// INGRESOS Y SALDOS BASE DE LAS TRES CUENTAS EN FIREBASE
+// INGRESOS MENSUALES Y SALDOS GLOBALES DE LAS TRES CUENTAS EN FIREBASE
 async function cargarIngresosYsaldoDelMes() {
     const mes = filtroMesInput.value;
     const data = ingresosPorMesGlobal[mes] || null;
+    const saldosGlobales = obtenerSaldosGlobalesUsuario(obtenerNombreUsuario(auth.currentUser?.email || ''));
+    const saldosFallback = saldosGlobales || obtenerUltimosSaldosMensualesLegacy(mes);
+
     if (data) {
         document.getElementById('sueldo-damian').value = new Intl.NumberFormat('es-AR').format(data.sueldoDamian || 0);
         document.getElementById('sueldo-maxi').value = new Intl.NumberFormat('es-AR').format(data.sueldoMaxi || 0);
-
-        const esDamian = usuarioEsDamian(auth.currentUser.email);
-        const sEfectivo = esDamian ? (data.baseEfectivoDamian || 0) : 0;
-        const sGalicia = esDamian ? (data.baseGaliciaDamian || 0) : 0;
-        const sMP = esDamian ? (data.baseMPDamian || 0) : 0;
-
-        document.getElementById('saldo-base-efectivo').value = sEfectivo !== undefined ? (sEfectivo < 0 ? '-' : '') + new Intl.NumberFormat('es-AR').format(Math.abs(sEfectivo)) : '';
-        document.getElementById('saldo-base-galicia').value = sGalicia !== undefined ? (sGalicia < 0 ? '-' : '') + new Intl.NumberFormat('es-AR').format(Math.abs(sGalicia)) : '';
-        document.getElementById('saldo-base-mp').value = sMP !== undefined ? (sMP < 0 ? '-' : '') + new Intl.NumberFormat('es-AR').format(Math.abs(sMP)) : '';
     } else {
         document.getElementById('sueldo-damian').value = '';
         document.getElementById('sueldo-maxi').value = '';
-        document.getElementById('saldo-base-efectivo').value = '';
-        document.getElementById('saldo-base-galicia').value = '';
-        document.getElementById('saldo-base-mp').value = '';
     }
+
+    document.getElementById('saldo-base-efectivo').value = formatearMontoInput(saldosFallback?.efectivo);
+    document.getElementById('saldo-base-galicia').value = formatearMontoInput(saldosFallback?.galicia);
+    document.getElementById('saldo-base-mp').value = formatearMontoInput(saldosFallback?.mp);
+
     calcularProporcionAlquiler();
     if(window.recalcularBalanceNeteado) window.recalcularBalanceNeteado();
     if(window.calcularDineroPersonalPrivado) window.calcularDineroPersonalPrivado();
+}
+
+function formatearMontoInput(valor) {
+    if (valor === undefined || valor === null) return '';
+    const numero = Number(valor || 0);
+    return (numero < 0 ? '-' : '') + new Intl.NumberFormat('es-AR').format(Math.abs(numero));
 }
 
 document.getElementById('btn-guardar-ingresos').addEventListener('click', async () => {
@@ -790,6 +802,7 @@ document.getElementById('btn-guardar-ingresos').addEventListener('click', async 
 
 document.getElementById('btn-guardar-saldos-base').addEventListener('click', async () => {
     const mes = filtroMesInput.value;
+    const userActivo = obtenerNombreUsuario(auth.currentUser.email);
     const bEfectivo = obtenerNumeroLimpio('saldo-base-efectivo');
     const bGalicia = obtenerNumeroLimpio('saldo-base-galicia');
     const bMP = obtenerNumeroLimpio('saldo-base-mp');
@@ -798,14 +811,18 @@ document.getElementById('btn-guardar-saldos-base').addEventListener('click', asy
     btn.textContent = "Guardando saldos..."; btn.disabled = true;
 
     try {
-        await setDoc(doc(db, "ingresos", mes), {
-            baseEfectivoDamian: bEfectivo,
-            baseGaliciaDamian: bGalicia,
-            baseMPDamian: bMP
+        await setDoc(doc(db, "configuracion", "saldos_cuentas_globales"), {
+            [userActivo]: {
+                efectivo: bEfectivo,
+                galicia: bGalicia,
+                mp: bMP,
+                periodoBase: mes,
+                actualizadoEn: new Date()
+            }
         }, { merge: true });
-        btn.textContent = "✓ Saldos Base Guardados";
-        setTimeout(() => { btn.textContent = "💾 Guardar Saldos Base Cuentas"; btn.disabled = false; }, 2000);
-    } catch (error) { alert("Error al guardar saldos base."); btn.textContent = "💾 Guardar Saldos Base Cuentas"; btn.disabled = false; }
+        btn.textContent = "✓ Saldos Globales Guardados";
+        setTimeout(() => { btn.textContent = "💾 Guardar Saldos Globales"; btn.disabled = false; }, 2000);
+    } catch (error) { alert("Error al guardar saldos globales."); btn.textContent = "💾 Guardar Saldos Globales"; btn.disabled = false; }
 });
 
 function escucharTraspasosYPagosTarjetas() {
@@ -1503,18 +1520,39 @@ function tieneSaldosBase(data) {
     );
 }
 
-function obtenerPeriodoBaseParaArrastre(periodoDestino) {
+function obtenerSaldosGlobalesUsuario(userActivo) {
+    const saldosUsuario = saldosCuentasGlobales[normalizarUsuarioId(userActivo)];
+    if (!saldosUsuario) return null;
+    return {
+        efectivo: Number(saldosUsuario.efectivo || 0),
+        galicia: Number(saldosUsuario.galicia || 0),
+        mp: Number(saldosUsuario.mp || 0),
+        periodoBase: saldosUsuario.periodoBase || mesActualStr
+    };
+}
+
+function obtenerUltimosSaldosMensualesLegacy(periodoDestino) {
     const periodosConBase = Object.keys(ingresosPorMesGlobal)
         .filter(periodo => compararPeriodos(periodo, periodoDestino) <= 0)
         .filter(periodo => tieneSaldosBase(ingresosPorMesGlobal[periodo]))
         .sort();
-    return periodosConBase[periodosConBase.length - 1] || periodoDestino;
+    const periodoBase = periodosConBase[periodosConBase.length - 1];
+    if (!periodoBase) return null;
+    return {
+        ...obtenerSaldosBaseDesdeDoc(ingresosPorMesGlobal[periodoBase]),
+        periodoBase
+    };
 }
 
 function calcularLiquidezEncadenada(userActivo, periodoDestino) {
-    const periodoBase = obtenerPeriodoBaseParaArrastre(periodoDestino);
-    let saldos = tieneSaldosBase(ingresosPorMesGlobal[periodoBase])
-        ? obtenerSaldosBaseDesdeDoc(ingresosPorMesGlobal[periodoBase])
+    const saldosGuardados = obtenerSaldosGlobalesUsuario(userActivo) || obtenerUltimosSaldosMensualesLegacy(periodoDestino);
+    const periodoBase = saldosGuardados?.periodoBase || periodoDestino;
+    let saldos = saldosGuardados
+        ? {
+            efectivo: saldosGuardados.efectivo,
+            galicia: saldosGuardados.galicia,
+            mp: saldosGuardados.mp
+        }
         : {
             efectivo: obtenerNumeroLimpio('saldo-base-efectivo'),
             galicia: obtenerNumeroLimpio('saldo-base-galicia'),
@@ -1522,7 +1560,11 @@ function calcularLiquidezEncadenada(userActivo, periodoDestino) {
         };
     let liquidez = null;
 
-    mesesEntre(periodoBase, periodoDestino).forEach((periodoCaja) => {
+    const periodosCaja = compararPeriodos(periodoBase, periodoDestino) <= 0
+        ? mesesEntre(periodoBase, periodoDestino)
+        : [periodoDestino];
+
+    periodosCaja.forEach((periodoCaja) => {
         liquidez = calcularLiquidezPersonal({
             gastos: listaGastosCompletaBase,
             tarjetas: listaTarjetasGlobal,
@@ -1665,9 +1707,10 @@ window.calcularDineroPersonalPrivado = function() {
     const detalleArrastre = document.getElementById('detalle-arrastre-saldo');
     if (detalleArrastre) {
         const periodoPrevio = mesAnterior(periodoActual);
+        const origenGlobal = obtenerSaldosGlobalesUsuario(userActivo) ? 'global' : 'mensual anterior';
         detalleArrastre.textContent = resultadoEncadenado.periodoBase === periodoActual
-            ? `Saldo calculado desde la base cargada en ${periodoActual}.`
-            : `Saldo arrastrado desde ${resultadoEncadenado.periodoBase}; incluye el cierre de ${periodoPrevio} y los movimientos reales de ${periodoActual}.`;
+            ? `Saldo ${origenGlobal} calculado desde ${periodoActual}.`
+            : `Saldo ${origenGlobal} arrastrado desde ${resultadoEncadenado.periodoBase}; incluye el cierre de ${periodoPrevio} y los movimientos reales de ${periodoActual}.`;
     }
     actualizarProyeccion();
 };
