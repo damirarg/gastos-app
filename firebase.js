@@ -399,16 +399,22 @@ window.actualizarRepartoGasto = async function(idGasto, nuevoReparto) {
     try {
         const gastoObj = listaGastosGlobal.find(g => g.id === idGasto);
         let nuevaCategoria = gastoObj ? gastoObj.categoria : "";
+        const actualizacion = {
+            tipoReparto: nuevoReparto,
+            categoria: nuevaCategoria,
+            esPrivado: nuevoReparto === 'privado',
+            owner: nuevoReparto === 'privado' ? normalizarUsuarioId(gastoObj?.pagadoPor || usuarioActivoId) : 'hogar'
+        };
 
         if (nuevoReparto === 'privado' && !categoriasPorTipo['privado'].includes(nuevaCategoria)) {
-            nuevaCategoria = '🛍️ Varios';
+            actualizacion.categoria = '🛍️ Varios';
         } else if (nuevoReparto === 'comun' && !categoriasPorTipo['comun'].includes(nuevaCategoria)) {
-            nuevaCategoria = '🛒 Supermercado';
+            actualizacion.categoria = '🛒 Supermercado';
         } else if (nuevoReparto === 'proporcional') {
-            nuevaCategoria = '🏠 Alquiler';
+            actualizacion.categoria = '🏠 Alquiler';
         }
 
-        await updateDoc(doc(db, "gastos", idGasto), { tipoReparto: nuevoReparto, categoria: nuevaCategoria });
+        await updateDoc(doc(db, "gastos", idGasto), actualizacion);
     } catch (error) { alert("Error al actualizar el tipo de reparto."); }
 };
 
@@ -1314,7 +1320,14 @@ function escucharGastosEnTiempoReal() {
     }));
 }
 
-window.eliminarGasto = async function(id) { if (confirm("¿Borrar este gasto o pago?")) await deleteDoc(doc(db, "gastos", id)); };
+window.eliminarGasto = async function(id) {
+    if (!confirm("¿Borrar este gasto o pago?")) return;
+    try {
+        await deleteDoc(doc(db, "gastos", id));
+    } catch (error) {
+        alert("No se pudo borrar el gasto. Si vuelve a aparecer, puede ser un gasto con permisos antiguos; probá recargar o avisame para revisar ese registro.");
+    }
+};
 
 document.getElementById('form-gasto').addEventListener('submit', async (e) => {
     e.preventDefault();

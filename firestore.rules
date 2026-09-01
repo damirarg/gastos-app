@@ -23,6 +23,11 @@ service cloud.firestore {
         resource.data.owner == userId();
     }
 
+    function canDeleteGasto() {
+      return canReadGasto() ||
+        resource.data.tipoReparto in ['comun', 'proporcional', 'devolucion'];
+    }
+
     function canWriteGasto() {
       return request.resource.data.esPrivado != true ||
         request.resource.data.owner == userId();
@@ -45,7 +50,7 @@ service cloud.firestore {
       allow get: if allowedUser() && canReadGasto();
       allow create: if allowedUser() && canWriteGasto();
       allow update: if allowedUser() && (canWriteGasto() || canEditVisibleGasto());
-      allow delete: if allowedUser() && canReadGasto();
+      allow delete: if allowedUser() && canDeleteGasto();
     }
 
     match /tarjetas/{document} {
