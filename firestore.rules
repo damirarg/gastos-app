@@ -65,6 +65,10 @@ service cloud.firestore {
       allow read, write: if allowedUser();
     }
 
+    match /saldos_cuentas/{ownerId} {
+      allow read, write: if allowedUser() && ownerId == userId();
+    }
+
     match /traspasos_cuentas/{document} {
       allow read, write: if allowedUser();
     }

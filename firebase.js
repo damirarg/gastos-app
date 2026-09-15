@@ -187,7 +187,7 @@ let listaTraspasosGlobal = [];
 let listaPagosTarjetasGlobal = [];
 let listaAjustesCuentaGlobal = [];
 let ingresosPorMesGlobal = {};
-let saldosCuentasGlobales = {};
+let saldosCuentasPersonales = {};
 let listaBorradoresImportacion = [];
 const suscripcionesTiempoReal = {
     gastos: null,
@@ -238,12 +238,14 @@ onAuthStateChanged(auth, (user) => {
         usuarioActivoId = nombreUser;
         document.getElementById('usuario-activo-email').textContent = usuarioCorto(nombreUser);
         document.getElementById('nombre-privado-titular').textContent = usuarioNombre(nombreUser);
+        const nombreSaldosTitular = document.getElementById('nombre-saldos-titular');
+        if (nombreSaldosTitular) nombreSaldosTitular.textContent = usuarioNombre(nombreUser);
         queueMicrotask(() => sincronizarCargaConUsuario());
 
         escucharTarjetasYcuentas();
         escucharGastosEnTiempoReal();
         escucharIngresosYSaldos();
-        escucharSaldosCuentasGlobales();
+        escucharSaldosCuentasPersonales(nombreUser);
         escucharPrestamoYcuotas();
         escucharTraspasosYPagosTarjetas();
     } else {
@@ -753,9 +755,10 @@ function escucharIngresosYSaldos() {
     }));
 }
 
-function escucharSaldosCuentasGlobales() {
-    reemplazarSuscripcion('saldosCuentas', onSnapshot(doc(db, "configuracion", "saldos_cuentas_globales"), (docSnap) => {
-        saldosCuentasGlobales = docSnap.exists() ? docSnap.data() : {};
+function escucharSaldosCuentasPersonales(userActivo) {
+    const userId = normalizarUsuarioId(userActivo);
+    reemplazarSuscripcion('saldosCuentas', onSnapshot(doc(db, "saldos_cuentas", userId), (docSnap) => {
+        saldosCuentasPersonales = docSnap.exists() ? { [userId]: docSnap.data() } : {};
         cargarIngresosYsaldoDelMes();
     }));
 }
@@ -768,8 +771,9 @@ window.eliminarMedio = async function(coleccion, id) {
 async function cargarIngresosYsaldoDelMes() {
     const mes = filtroMesInput.value;
     const data = ingresosPorMesGlobal[mes] || null;
-    const saldosGlobales = obtenerSaldosGlobalesUsuario(obtenerNombreUsuario(auth.currentUser?.email || ''));
-    const saldosFallback = saldosGlobales || obtenerUltimosSaldosMensualesLegacy(mes);
+    const userActivo = obtenerNombreUsuario(auth.currentUser?.email || '');
+    const saldosPersonales = obtenerSaldosPersonalesUsuario(userActivo);
+    const saldosFallback = saldosPersonales || obtenerUltimosSaldosMensualesLegacy(userActivo);
 
     if (data) {
         document.getElementById('sueldo-damian').value = new Intl.NumberFormat('es-AR').format(data.sueldoDamian || 0);
@@ -810,6 +814,7 @@ document.getElementById('btn-guardar-ingresos').addEventListener('click', async 
 document.getElementById('btn-guardar-saldos-base').addEventListener('click', async () => {
     const mes = filtroMesInput.value;
     const userActivo = obtenerNombreUsuario(auth.currentUser.email);
+    const userActivoId = normalizarUsuarioId(userActivo);
     const bEfectivo = obtenerNumeroLimpio('saldo-base-efectivo');
     const bGalicia = obtenerNumeroLimpio('saldo-base-galicia');
     const bMP = obtenerNumeroLimpio('saldo-base-mp');
@@ -818,18 +823,17 @@ document.getElementById('btn-guardar-saldos-base').addEventListener('click', asy
     btn.textContent = "Guardando saldos..."; btn.disabled = true;
 
     try {
-        await setDoc(doc(db, "configuracion", "saldos_cuentas_globales"), {
-            [userActivo]: {
-                efectivo: bEfectivo,
-                galicia: bGalicia,
-                mp: bMP,
-                periodoBase: mes,
-                actualizadoEn: new Date()
-            }
+        await setDoc(doc(db, "saldos_cuentas", userActivoId), {
+            efectivo: bEfectivo,
+            galicia: bGalicia,
+            mp: bMP,
+            periodoBase: mes,
+            owner: userActivoId,
+            actualizadoEn: new Date()
         }, { merge: true });
-        btn.textContent = "✓ Saldos Globales Guardados";
-        setTimeout(() => { btn.textContent = "💾 Guardar Saldos Globales"; btn.disabled = false; }, 2000);
-    } catch (error) { alert("Error al guardar saldos globales."); btn.textContent = "💾 Guardar Saldos Globales"; btn.disabled = false; }
+        btn.textContent = "✓ Mis saldos guardados";
+        setTimeout(() => { btn.textContent = "💾 Guardar mis saldos"; btn.disabled = false; }, 2000);
+    } catch (error) { alert("Error al guardar tus saldos."); btn.textContent = "💾 Guardar mis saldos"; btn.disabled = false; }
 });
 
 function escucharTraspasosYPagosTarjetas() {
@@ -1594,8 +1598,8 @@ function tieneSaldosBase(data) {
     );
 }
 
-function obtenerSaldosGlobalesUsuario(userActivo) {
-    const saldosUsuario = saldosCuentasGlobales[normalizarUsuarioId(userActivo)];
+function obtenerSaldosPersonalesUsuario(userActivo) {
+    const saldosUsuario = saldosCuentasPersonales[normalizarUsuarioId(userActivo)];
     if (!saldosUsuario) return null;
     return {
         efectivo: Number(saldosUsuario.efectivo || 0),
@@ -1603,11 +1607,12 @@ function obtenerSaldosGlobalesUsuario(userActivo) {
         mp: Number(saldosUsuario.mp || 0),
         periodoBase: saldosUsuario.periodoBase || mesActualStr,
         actualizadoEn: saldosUsuario.actualizadoEn || null,
-        esGlobal: true
+        esPersonal: true
     };
 }
 
-function obtenerUltimosSaldosMensualesLegacy() {
+function obtenerUltimosSaldosMensualesLegacy(userActivo = usuarioActivoId) {
+    if (normalizarUsuarioId(userActivo) !== 'damian') return null;
     const periodosConBase = Object.keys(ingresosPorMesGlobal)
         .filter(periodo => tieneSaldosBase(ingresosPorMesGlobal[periodo]))
         .sort();
@@ -1617,7 +1622,7 @@ function obtenerUltimosSaldosMensualesLegacy() {
         ...obtenerSaldosBaseDesdeDoc(ingresosPorMesGlobal[periodoBase]),
         periodoBase,
         actualizadoEn: null,
-        esGlobal: false
+        esPersonal: false
     };
 }
 
@@ -1626,7 +1631,7 @@ function periodoDesdeFechaMovimiento(fecha) {
     return key ? key.slice(0, 7) : '';
 }
 
-function obtenerPeriodoSaldoGlobal(userActivo, periodoBase) {
+function obtenerPeriodoSaldoPersonal(userActivo, periodoBase) {
     const periodos = [mesActualStr, periodoBase].filter(Boolean);
 
     listaGastosCompletaBase.forEach((gasto) => {
@@ -1685,7 +1690,7 @@ function fechaMovimientoMs(fecha) {
 }
 
 function fueCreadoDespuesDelSaldoBase(movimiento, saldosGuardados) {
-    if (!saldosGuardados?.esGlobal) return true;
+    if (!saldosGuardados?.esPersonal) return true;
     const baseMs = fechaMovimientoMs(saldosGuardados.actualizadoEn);
     const creadoMs = fechaMovimientoMs(movimiento.createdAt);
     if (!baseMs || !creadoMs) return false;
@@ -1779,7 +1784,7 @@ function aplicarMovimientosPropiosPreviosALaBase(liquidez, userActivo, periodoBa
 }
 
 function calcularLiquidezEncadenada(userActivo, periodoDestino) {
-    const saldosGuardados = obtenerSaldosGlobalesUsuario(userActivo) || obtenerUltimosSaldosMensualesLegacy();
+    const saldosGuardados = obtenerSaldosPersonalesUsuario(userActivo) || obtenerUltimosSaldosMensualesLegacy(userActivo);
     const periodoBase = saldosGuardados?.periodoBase || periodoDestino;
     let saldos = saldosGuardados
         ? {
@@ -1824,10 +1829,10 @@ function calcularLiquidezEncadenada(userActivo, periodoDestino) {
 }
 
 function obtenerLiquidezGlobal(userActivo) {
-    const saldosGuardados = obtenerSaldosGlobalesUsuario(userActivo) || obtenerUltimosSaldosMensualesLegacy();
+    const saldosGuardados = obtenerSaldosPersonalesUsuario(userActivo) || obtenerUltimosSaldosMensualesLegacy(userActivo);
     const periodoBase = saldosGuardados?.periodoBase || mesActualStr;
-    const periodoSaldoGlobal = obtenerPeriodoSaldoGlobal(userActivo, periodoBase);
-    const resultado = calcularLiquidezEncadenada(userActivo, periodoSaldoGlobal);
+    const periodoSaldoPersonal = obtenerPeriodoSaldoPersonal(userActivo, periodoBase);
+    const resultado = calcularLiquidezEncadenada(userActivo, periodoSaldoPersonal);
     aplicarMovimientosPropiosPreviosALaBase(resultado.liquidez, userActivo, resultado.periodoBase, saldosGuardados);
     return resultado;
 }
@@ -1940,8 +1945,8 @@ window.calcularDineroPersonalPrivado = function() {
     document.getElementById('credito-total-tarjetas').textContent = "$" + new Intl.NumberFormat('es-AR').format(liquidez.tarjetas.total);
     const detalleArrastre = document.getElementById('detalle-arrastre-saldo');
     if (detalleArrastre) {
-        const origenGlobal = obtenerSaldosGlobalesUsuario(userActivo) ? 'global' : 'mensual anterior';
-        detalleArrastre.textContent = `Saldo ${origenGlobal} único; no cambia por el período en pantalla. Calculado desde ${resultadoEncadenado.periodoBase} hasta ${resultadoEncadenado.periodoDestino}.`;
+        const origenSaldo = obtenerSaldosPersonalesUsuario(userActivo) ? 'personal guardado' : 'mensual anterior';
+        detalleArrastre.textContent = `Saldo ${origenSaldo}; no cambia por el período en pantalla. Calculado desde ${resultadoEncadenado.periodoBase} hasta ${resultadoEncadenado.periodoDestino}.`;
     }
     actualizarProyeccion();
 };
